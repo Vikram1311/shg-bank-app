@@ -637,8 +637,8 @@ export const useStore = create<AppState>()(
         const admin = get().members.find(m => m.isAdmin);
         if (!admin) return { totalContribution: 0, interestEarnings: 0, penaltyEarnings: 0, sharePercent: 0 };
         const adminContrib = get().getMemberTotalContribution(admin.id);
-        const allMembers = get().members.filter(m => m.isActive);
-        const totalContribs = allMembers.reduce((sum, m) => sum + get().getMemberTotalContribution(m.id), 0);
+        const allActiveMembers = get().members.filter(m => m.isActive);
+        const totalContribs = allActiveMembers.reduce((sum, m) => sum + get().getMemberTotalContribution(m.id), 0);
         if (totalContribs === 0) return { totalContribution: adminContrib, interestEarnings: 0, penaltyEarnings: 0, sharePercent: 0 };
         const sharePercent = (adminContrib / totalContribs) * 100;
         const totalInterest = get().getTotalInterestCollected();
