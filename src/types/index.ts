@@ -6,7 +6,8 @@ export interface Member {
   joiningDate: string;
   profilePhoto?: string;
   isAdmin: boolean;
-  isActive: boolean;
+  isActive: boolean;  // used as soft-delete: false = deleted
+  inactiveSince?: string | null;  // null = active, date string = inactive since that date
   language?: 'hi' | 'en' | 'ta';
 }
 
@@ -22,12 +23,13 @@ export interface Loan {
   emiAmount: number;
   remainingAmount: number;
   openingDate: string;
-  closingDate: string;
+  closingDate: string | null;
   nextEmiDate: string;
-  status: 'pending' | 'approved' | 'active' | 'completed' | 'recalled' | 'rejected';
+  status: 'pending' | 'approved' | 'active' | 'completed' | 'recalled' | 'rejected' | 'foreclosed';
   includeInterest: boolean;
   isOldLoan: boolean;
   emiHistory: EMIRecord[];
+  foreclosureDate?: string;
 }
 
 export interface EMIRecord {
@@ -56,6 +58,8 @@ export interface Contribution {
   penalty: number;
   status: 'paid' | 'pending' | 'overdue';
   approvedByMember: boolean;
+  type?: 'contribution' | 'interest';
+  description?: string;
 }
 
 export interface PenaltyRecord {

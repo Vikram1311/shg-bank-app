@@ -72,7 +72,7 @@ interface AppState {
   recallLoan: (loanId: string) => void;
   approveLoan: (loanId: string) => void;
   rejectLoan: (loanId: string) => void;
-  addOldLoan: (data: { memberId: string; amount: number; openingDate: string; closingDate: string; includeInterest: boolean; months: number }) => void;
+  addOldLoan: (data: { memberId: string; amount: number; openingDate: string; closingDate: string | null; includeInterest: boolean; months: number; isCurrentlyRunning?: boolean }) => void;
   
   // EMI actions
   addEMIPayment: (loanId: string, emiNumber: number, paidDate: string, applyPenalty: boolean) => void;
@@ -115,6 +115,14 @@ interface AppState {
   getTotalInterestCollected: () => number;
   getDefaulterNames: () => string[];
   canApplyLoan: (memberId: string) => boolean;
+  deleteContribution: (id: string) => void;
+  deleteLoan: (id: string) => void;
+  addOldInterest: (data: { memberId: string; amount: number; date: string; description?: string }) => void;
+  forecloseLoan: (loanId: string) => void;
+  setMemberInactiveStatus: (memberId: string, inactiveSince: string | null) => void;
+  getMemberLoanLimit: (memberId: string) => number;
+  getAdminShare: () => { totalContribution: number; interestEarnings: number; penaltyEarnings: number; sharePercent: number };
+  exportAdminCSV: () => string;
 }
 
 export const useStore = create<AppState>()(
@@ -243,29 +251,30 @@ export const useStore = create<AppState>()(
         }));
       },
 
-      addOldLoan: ({ memberId, amount, openingDate, closingDate, includeInterest, months }) => {
+      addOldLoan: ({ memberId, amount, openingDate, closingDate, includeInterest, months, isCurrentlyRunning }) => {
         const member = get().members.find(m => m.id === memberId);
         if (!member) return;
         const rate = includeInterest ? 0.02 : 0;
-        const details = calculateLoanDetails(amount, months, rate);
+        const effectiveMonths = (isCurrentlyRunning || closingDate === null) ? Math.max(1, months) : months;
+        const details = calculateLoanDetails(amount, effectiveMonths, rate);
         const loan: Loan = {
           id: generateId(),
           memberId,
           memberName: member.name,
           amount,
           interestRate: includeInterest ? 2 : 0,
-          months,
+          months: effectiveMonths,
           totalInterest: includeInterest ? details.totalInterest : 0,
           totalPayable: details.totalPayable,
           emiAmount: details.emi,
           remainingAmount: details.totalPayable,
           openingDate,
-          closingDate,
+          closingDate: (isCurrentlyRunning || closingDate === null) ? null : closingDate,
           nextEmiDate: new Date(new Date(openingDate).getFullYear(), new Date(openingDate).getMonth() + 1, 11).toISOString(),
           status: 'active',
           includeInterest,
           isOldLoan: true,
-          emiHistory: details.breakdown.map((b, i) => {
+          emiHistory: (isCurrentlyRunning || closingDate === null) ? [] : details.breakdown.map((b, i) => {
             const emiDate = new Date(new Date(openingDate).getFullYear(), new Date(openingDate).getMonth() + i, 11);
             return {
               id: generateId(),
@@ -420,16 +429,38 @@ export const useStore = create<AppState>()(
         const loans = get().getMemberLoans(memberId);
         const contributions = get().getMemberContributions(memberId);
         if (!member) return '';
-        let csv = `SHG BANK - Member Report\n`;
-        csv += `Name,${member.name}\nMobile,${member.mobile}\nJoining Date,${member.joiningDate}\n\n`;
-        csv += `Contributions\nMonth,Amount,Status,Penalty,Paid Date\n`;
+        let csv = `SHG BANK - Member Statement\n`;
+        csv += `Name,${member.name}\n`;
+        csv += `Mobile,${member.mobile}\n`;
+        csv += `Joining Date,${member.joiningDate}\n`;
+        csv += `Status,${member.inactiveSince ? 'Inactive since ' + member.inactiveSince : 'Active'}\n\n`;
+        csv += `Contributions\nMonth,Type,Amount,Status,Penalty,Paid Date,Description\n`;
         contributions.forEach(c => {
-          csv += `${c.month},${c.amount},${c.status},${c.penalty},${c.paidDate || ''}\n`;
+          csv += `${c.month},${c.type || 'contribution'},${c.amount},${c.status},${c.penalty},${c.paidDate || ''},${c.description || ''}\n`;
         });
-        csv += `\nLoans\nLoan ID,Amount,Months,Interest,Total,Status,Date\n`;
+        csv += `\nLoans\nLoan ID,Amount,Months,Interest,Total,Status,Opening Date,Closing Date,Foreclosure Date\n`;
         loans.forEach(l => {
-          csv += `${l.id},${l.amount},${l.months},${l.totalInterest},${l.totalPayable},${l.status},${l.openingDate}\n`;
+          csv += `${l.id},${l.amount},${l.months},${l.totalInterest},${l.totalPayable},${l.status},${l.openingDate},${l.closingDate || 'Running'},${l.foreclosureDate || ''}\n`;
         });
+        csv += `\nMonthly ROI Breakdown\nMonth,Opening Balance,Contribution,Interest Earned,ROI %,Closing Balance\n`;
+        const sortedContribs = [...contributions].sort((a, b) => a.month.localeCompare(b.month));
+        let balance = 0;
+        const monthlyData: Record<string, { contrib: number; interest: number }> = {};
+        sortedContribs.forEach(c => {
+          if (!monthlyData[c.month]) monthlyData[c.month] = { contrib: 0, interest: 0 };
+          if (c.type === 'interest') monthlyData[c.month].interest += c.amount;
+          else monthlyData[c.month].contrib += c.amount;
+        });
+        Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b)).forEach(([month, data]) => {
+          const opening = balance;
+          const roi = opening > 0 ? Math.round((data.interest / opening) * 10000) / 100 : 0;
+          balance = opening + data.contrib + data.interest;
+          csv += `${month},${opening},${data.contrib},${data.interest},${roi}%,${balance}\n`;
+        });
+        csv += `\nSummary\nTotal Contribution,${get().getMemberTotalContribution(memberId)}\n`;
+        csv += `Interest Earnings,${get().getMemberInterestShare(memberId)}\n`;
+        csv += `Penalty Earnings,${get().getMemberPenaltyShare(memberId)}\n`;
+        csv += `Grand Total,${get().getMemberGrandTotal(memberId)}\n`;
         return csv;
       },
 
@@ -536,6 +567,140 @@ export const useStore = create<AppState>()(
           const paidEmis = l.emiHistory.filter(e => e.status === 'paid').length;
           return paidEmis >= Math.ceil(l.months / 2);
         });
+      },
+
+      deleteContribution: (id) => {
+        set(s => ({
+          contributions: s.contributions.filter(c => c.id !== id),
+          penalties: s.penalties.filter(p => p.referenceId !== id),
+        }));
+      },
+
+      deleteLoan: (id) => {
+        const loan = get().loans.find(l => l.id === id);
+        if (!loan) return;
+        const emiIds = loan.emiHistory.map(e => e.id);
+        set(s => ({
+          loans: s.loans.filter(l => l.id !== id),
+          penalties: s.penalties.filter(p => !emiIds.includes(p.referenceId)),
+        }));
+      },
+
+      addOldInterest: ({ memberId, amount, date, description }) => {
+        const member = get().members.find(m => m.id === memberId);
+        if (!member) return;
+        const contribution: Contribution = {
+          id: generateId(),
+          memberId,
+          memberName: member.name,
+          amount,
+          month: date.substring(0, 7),
+          dueDate: date,
+          paidDate: date,
+          penalty: 0,
+          status: 'paid',
+          approvedByMember: true,
+          type: 'interest',
+          description,
+        };
+        set(s => ({ contributions: [...s.contributions, contribution] }));
+      },
+
+      forecloseLoan: (loanId) => {
+        const today = new Date().toISOString().split('T')[0];
+        set(s => ({
+          loans: s.loans.map(l => l.id === loanId ? {
+            ...l,
+            status: 'foreclosed' as const,
+            foreclosureDate: today,
+            closingDate: today,
+          } : l),
+        }));
+      },
+
+      setMemberInactiveStatus: (memberId, inactiveSince) => {
+        set(s => ({
+          members: s.members.map(m => m.id === memberId ? { ...m, inactiveSince } : m),
+        }));
+      },
+
+      getMemberLoanLimit: (memberId) => {
+        const member = get().getMember(memberId);
+        if (!member) return 0;
+        if (member.inactiveSince) {
+          return get().getMemberTotalContribution(memberId);
+        }
+        return get().settings.maxLoanAmount;
+      },
+
+      getAdminShare: () => {
+        const admin = get().members.find(m => m.isAdmin);
+        if (!admin) return { totalContribution: 0, interestEarnings: 0, penaltyEarnings: 0, sharePercent: 0 };
+        const adminContrib = get().getMemberTotalContribution(admin.id);
+        const allMembers = get().members.filter(m => m.isActive);
+        const totalContribs = allMembers.reduce((sum, m) => sum + get().getMemberTotalContribution(m.id), 0);
+        if (totalContribs === 0) return { totalContribution: adminContrib, interestEarnings: 0, penaltyEarnings: 0, sharePercent: 0 };
+        const sharePercent = (adminContrib / totalContribs) * 100;
+        const totalInterest = get().getTotalInterestCollected();
+        const totalPenalty = get().getTotalPenaltyCollected();
+        return {
+          totalContribution: adminContrib,
+          interestEarnings: Math.round((adminContrib / totalContribs) * totalInterest * 100) / 100,
+          penaltyEarnings: Math.round((adminContrib / totalContribs) * totalPenalty * 100) / 100,
+          sharePercent: Math.round(sharePercent * 100) / 100,
+        };
+      },
+
+      exportAdminCSV: () => {
+        const members = get().members.filter(m => m.isActive && !m.isAdmin);
+        let csv = `SHG BANK - Complete Report\n\n`;
+        csv += `Member Name,Status,Total Contribution,Interest Earnings,Penalty Earnings,ROI%,Current Loan,Month,Monthly Contribution,Monthly Interest\n`;
+        members.forEach(member => {
+          const tc = get().getMemberTotalContribution(member.id);
+          const ie = get().getMemberInterestShare(member.id);
+          const pe = get().getMemberPenaltyShare(member.id);
+          const roi = tc > 0 ? Math.round(((ie + pe) / tc) * 10000) / 100 : 0;
+          const activeLoans = get().loans.filter(l => l.memberId === member.id && l.status === 'active');
+          const currentLoan = activeLoans.reduce((sum, l) => sum + l.remainingAmount, 0);
+          const status = member.inactiveSince ? `Inactive since ${member.inactiveSince}` : 'Active';
+          const contribs = get().getMemberContributions(member.id).sort((a, b) => a.month.localeCompare(b.month));
+          if (contribs.length === 0) {
+            csv += `${member.name},${status},${tc},${ie},${pe},${roi}%,${currentLoan},,,,\n`;
+          } else {
+            const monthlyData: Record<string, { contrib: number; interest: number }> = {};
+            contribs.forEach(c => {
+              if (!monthlyData[c.month]) monthlyData[c.month] = { contrib: 0, interest: 0 };
+              if (c.type === 'interest') monthlyData[c.month].interest += c.amount;
+              else monthlyData[c.month].contrib += c.amount;
+            });
+            let firstRow = true;
+            Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b)).forEach(([month, data]) => {
+              if (firstRow) {
+                csv += `${member.name},${status},${tc},${ie},${pe},${roi}%,${currentLoan},${month},${data.contrib},${data.interest}\n`;
+                firstRow = false;
+              } else {
+                csv += `,,,,,,,${month},${data.contrib},${data.interest}\n`;
+              }
+            });
+          }
+        });
+        const totalFund = get().getTotalCollection();
+        const totalLoans = get().getTotalLoansGiven();
+        const totalInterest = get().getTotalInterestCollected();
+        const totalPenalty = get().getTotalPenaltyCollected();
+        const overallROI = totalFund > 0 ? Math.round(((totalInterest + totalPenalty) / totalFund) * 10000) / 100 : 0;
+        const activeCount = members.filter(m => !m.inactiveSince).length;
+        const inactiveCount = members.filter(m => m.inactiveSince).length;
+        csv += `\nSUMMARY\n`;
+        csv += `Total Members,${members.length}\n`;
+        csv += `Active Members,${activeCount}\n`;
+        csv += `Inactive Members,${inactiveCount}\n`;
+        csv += `Total SHG Fund,${totalFund}\n`;
+        csv += `Total Loans Active,${totalLoans}\n`;
+        csv += `Total Interest Earned,${totalInterest}\n`;
+        csv += `Total Penalty Collected,${totalPenalty}\n`;
+        csv += `Overall SHG ROI,${overallROI}%\n`;
+        return csv;
       },
     }),
     {

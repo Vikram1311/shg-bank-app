@@ -6,7 +6,7 @@ import { formatCurrency, formatDate, getMonthKey, calculateLoanDetails, calculat
 import {
   IndianRupee, TrendingUp, Wallet, CreditCard, User, Lock, Camera,
   ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Bell,
-  FileText, Eye, XCircle, Banknote, ArrowUpCircle
+  FileText, Eye, XCircle, Banknote, ArrowUpCircle, Download
 } from 'lucide-react';
 
 type MemberTab = 'dashboard' | 'loans' | 'history' | 'profile';
@@ -56,8 +56,10 @@ export default function MemberPage() {
 
   const loanDetails = loanAmount ? calculateLoanDetails(Number(loanAmount), Number(loanMonths)) : null;
 
+  const loanLimit = store.getMemberLoanLimit(member.id);
+
   const handleApplyLoan = () => {
-    if (!loanAmount || Number(loanAmount) <= 0 || Number(loanAmount) > store.settings.maxLoanAmount) return;
+    if (!loanAmount || Number(loanAmount) <= 0 || Number(loanAmount) > loanLimit) return;
     store.applyForLoan(member.id, Number(loanAmount), Number(loanMonths));
     setShowLoanCalc(false);
     setLoanAmount('');
@@ -146,6 +148,16 @@ export default function MemberPage() {
               <StatCard icon={<TrendingUp className="w-5 h-5" />} label={t('interestEarnings')} value={interestShare} color="from-blue-500 to-indigo-600" />
               <StatCard icon={<Wallet className="w-5 h-5" />} label={t('grandTotal')} value={grandTotal} color="from-amber-500 to-orange-600" />
             </div>
+
+            {member.inactiveSince && (
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-3 text-orange-300 text-sm flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">{t('inactive')} - {t('inactiveSince')}: {member.inactiveSince}</p>
+                  <p className="text-xs mt-1">{t('loanLimitInactive')}: {formatCurrency(store.getMemberLoanLimit(member.id))}</p>
+                </div>
+              </div>
+            )}
 
             {/* Total Earnings Card */}
             <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur rounded-2xl p-4 border border-purple-500/20">
@@ -305,7 +317,24 @@ export default function MemberPage() {
         {/* History Tab */}
         {activeTab === 'history' && (
           <div className="space-y-4">
-            <h2 className="text-white font-bold text-lg">{t('history')}</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-white font-bold text-lg">{t('history')}</h2>
+              <button
+                onClick={() => {
+                  const csv = store.exportMemberCSV(member.id);
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${member.name}_statement.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className={btnPrimary + " px-3 py-1.5 text-xs flex items-center gap-1"}
+              >
+                <Download className="w-3 h-3" /> {t('downloadStatement')}
+              </button>
+            </div>
 
             {/* Contributions History */}
             <div className="bg-white/5 backdrop-blur rounded-2xl p-4 border border-white/10">
@@ -464,12 +493,12 @@ export default function MemberPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-gray-400 text-sm">{t('loanAmount')} (₹100 - ₹{store.settings.maxLoanAmount.toLocaleString()})</label>
-                <input type="range" min="100" max={store.settings.maxLoanAmount} step="100" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} className="w-full mt-2 accent-yellow-400" />
+                <label className="text-gray-400 text-sm">{t('loanAmount')} (₹100 - ₹{loanLimit.toLocaleString()})</label>
+                <input type="range" min="100" max={loanLimit} step="100" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} className="w-full mt-2 accent-yellow-400" />
                 <div className="flex justify-between text-xs text-gray-400">
                   <span>₹100</span>
                   <span className="text-yellow-400 text-xl font-bold">₹{Number(loanAmount || 0).toLocaleString()}</span>
-                  <span>₹{store.settings.maxLoanAmount.toLocaleString()}</span>
+                  <span>₹{loanLimit.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -523,7 +552,7 @@ export default function MemberPage() {
               <div className="text-xs text-gray-400 space-y-1">
                 <p>📌 {t('interestInfo')}</p>
                 <p>📌 {t('lateFeeInfo')}</p>
-                <p>📌 {t('loanLimitInfo')}</p>
+                <p>📌 {member.inactiveSince ? `${t('loanLimitInactive')}: ${formatCurrency(loanLimit)}` : t('loanLimitInfo')}</p>
               </div>
 
               <button
@@ -568,7 +597,7 @@ export default function MemberPage() {
                     <p className="text-red-400 font-bold">{formatCurrency(loan.remainingAmount)}</p>
                   </div>
                 </div>
-                <p className="text-gray-400 text-xs mb-2">{t('openingDate')}: {formatDate(loan.openingDate)} → {t('closingDate')}: {formatDate(loan.closingDate)}</p>
+                <p className="text-gray-400 text-xs mb-2">{t('openingDate')}: {formatDate(loan.openingDate)} → {t('closingDate')}: {loan.closingDate ? formatDate(loan.closingDate) : t('currentRunningLoan')}{loan.foreclosureDate ? ` (${t('foreclosureDate')}: ${formatDate(loan.foreclosureDate)})` : ''}</p>
                 <div className="space-y-2">
                   {loan.emiHistory.map(emi => (
                     <div key={emi.id} className={`rounded-xl p-3 border ${emi.status === 'paid' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-white/5 border-white/10'}`}>

@@ -72,6 +72,14 @@ export default function AdminPanel() {
   const [emiPenalty, setEmiPenalty] = useState(false);
   const [showAddEMI, setShowAddEMI] = useState(false);
   const [settingsEdit, setSettingsEdit] = useState({ ...store.settings });
+  const [showAddOldInterest, setShowAddOldInterest] = useState(false);
+  const [interestMemberId, setInterestMemberId] = useState('');
+  const [interestAmount, setInterestAmount] = useState('');
+  const [interestDate, setInterestDate] = useState(new Date().toISOString().split('T')[0]);
+  const [interestDescription, setInterestDescription] = useState('');
+  const [oldLoanIsCurrentlyRunning, setOldLoanIsCurrentlyRunning] = useState(false);
+  const [showInactiveDateModal, setShowInactiveDateModal] = useState<string | null>(null);
+  const [inactiveDateForMember, setInactiveDateForMember] = useState(new Date().toISOString().split('T')[0]);
 
   const activeMembers = store.members.filter(m => m.isActive);
   const nonAdminMembers = activeMembers.filter(m => !m.isAdmin);
@@ -115,16 +123,37 @@ export default function AdminPanel() {
   };
 
   const handleAddOldLoan = () => {
-    if (!oldLoanMember || !oldLoanAmount || !oldLoanOpening || !oldLoanClosing) return;
+    if (!oldLoanMember || !oldLoanAmount || !oldLoanOpening) return;
+    if (!oldLoanIsCurrentlyRunning && !oldLoanClosing) return;
     store.addOldLoan({
       memberId: oldLoanMember,
       amount: Number(oldLoanAmount),
       openingDate: oldLoanOpening,
-      closingDate: oldLoanClosing,
+      closingDate: oldLoanIsCurrentlyRunning ? null : oldLoanClosing,
       includeInterest: oldLoanIncludeInterest,
       months: Number(oldLoanMonths),
+      isCurrentlyRunning: oldLoanIsCurrentlyRunning,
     });
+    setOldLoanIsCurrentlyRunning(false);
     setShowAddOldLoan(false);
+  };
+
+  const handleAddOldInterest = () => {
+    if (!interestMemberId || !interestAmount || !interestDate) return;
+    store.addOldInterest({ memberId: interestMemberId, amount: Number(interestAmount), date: interestDate, description: interestDescription || undefined });
+    setInterestMemberId(''); setInterestAmount(''); setInterestDescription('');
+    setShowAddOldInterest(false);
+  };
+
+  const handleExportAdminCSV = () => {
+    const csv = store.exportAdminCSV();
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'shg_complete_report.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleSendMessage = () => {
@@ -207,7 +236,36 @@ export default function AdminPanel() {
               <StatCard icon={<FileText className="w-6 h-6" />} label={t('pendingLoans')} value={pendingLoans.length} color="from-yellow-500 to-amber-600" />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {(() => {
+              const adminShare = store.getAdminShare();
+              if (adminShare.totalContribution === 0) return null;
+              return (
+                <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 backdrop-blur rounded-2xl p-4 mb-6 border border-yellow-500/20">
+                  <h3 className="text-yellow-300 font-bold text-lg mb-3 flex items-center gap-2">
+                    <IndianRupee className="w-5 h-5" /> {t('adminShare')}
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-xs">{t('adminContribution')}</p>
+                      <p className="text-white font-bold">{formatCurrency(adminShare.totalContribution)}</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-xs">{t('adminInterest')}</p>
+                      <p className="text-blue-400 font-bold">{formatCurrency(adminShare.interestEarnings)}</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-xs">{t('adminPenalty')}</p>
+                      <p className="text-red-400 font-bold">{formatCurrency(adminShare.penaltyEarnings)}</p>
+                    </div>
+                    <div className="bg-white/5 rounded-xl p-3 text-center">
+                      <p className="text-gray-400 text-xs">{t('sharePercent')}</p>
+                      <p className="text-yellow-400 font-bold">{adminShare.sharePercent}%</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
               <button onClick={() => setShowAddContribution(true)} className={`${btnP} p-4 text-center`}>
                 <Plus className="w-6 h-6 mx-auto mb-1" /><span className="text-sm">{t('addContribution')}</span>
               </button>
@@ -219,6 +277,9 @@ export default function AdminPanel() {
               </button>
               <button onClick={() => setShowSendMessage(true)} className={`${btnPu} p-4 text-center`}>
                 <Send className="w-6 h-6 mx-auto mb-1" /><span className="text-sm">{t('sendMessage')}</span>
+              </button>
+              <button onClick={handleExportAdminCSV} className={`${btnP} p-4 text-center`}>
+                <Download className="w-6 h-6 mx-auto mb-1" /><span className="text-sm">{t('exportAdminCSV')}</span>
               </button>
             </div>
 
@@ -309,12 +370,28 @@ export default function AdminPanel() {
                     <div>
                       <p className="text-white font-semibold">{member.name}</p>
                       <p className="text-gray-400 text-sm">{member.mobile} • {formatDate(member.joiningDate)}</p>
+                      {member.inactiveSince && (
+                        <span className="text-orange-400 text-xs bg-orange-500/10 px-2 py-0.5 rounded-full">{t('inactive')} {t('inactiveSince')}: {member.inactiveSince}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap justify-end">
                     <button onClick={() => setShowEditMember(member.id)} className="bg-blue-500/20 text-blue-400 p-2 rounded-lg hover:bg-blue-500/30"><Edit3 className="w-4 h-4" /></button>
                     <button onClick={() => { if (confirm(`${member.name} हटाएं?`)) store.removeMember(member.id); }} className="bg-red-500/20 text-red-400 p-2 rounded-lg hover:bg-red-500/30"><Trash2 className="w-4 h-4" /></button>
                     <button onClick={() => store.resetMemberPassword(member.id)} className="bg-amber-500/20 text-amber-400 p-2 rounded-lg hover:bg-amber-500/30 text-xs whitespace-nowrap">🔑 Reset</button>
+                    <button
+                      onClick={() => {
+                        if (member.inactiveSince) {
+                          store.setMemberInactiveStatus(member.id, null);
+                        } else {
+                          setShowInactiveDateModal(member.id);
+                          setInactiveDateForMember(new Date().toISOString().split('T')[0]);
+                        }
+                      }}
+                      className={`px-2 py-1 rounded-lg text-xs font-semibold ${member.inactiveSince ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30'}`}
+                    >
+                      {member.inactiveSince ? t('markActive') : t('markInactive')}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -338,10 +415,10 @@ export default function AdminPanel() {
                     </div>
                     <div>
                       <p className="text-white font-semibold">{loan.memberName}</p>
-                      <p className="text-gray-400 text-sm">{formatDate(loan.openingDate)} → {formatDate(loan.closingDate)}</p>
+                      <p className="text-gray-400 text-sm">{formatDate(loan.openingDate)} → {loan.closingDate ? formatDate(loan.closingDate) : t('currentRunningLoan')}</p>
                     </div>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${loan.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : loan.status === 'completed' ? 'bg-blue-500/20 text-blue-400' : loan.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-500/20 text-gray-400'}`}>{t(loan.status)}</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${loan.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : loan.status === 'completed' ? 'bg-blue-500/20 text-blue-400' : loan.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' : loan.status === 'foreclosed' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-500/20 text-gray-400'}`}>{t(loan.status) || loan.status}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 text-center mt-3">
                   <div className="bg-white/5 rounded-lg p-2"><p className="text-gray-400 text-xs">{t('loanAmount')}</p><p className="text-white font-bold">{formatCurrency(loan.amount)}</p></div>
@@ -350,12 +427,16 @@ export default function AdminPanel() {
                 </div>
                 <div className="flex justify-between items-center mt-3">
                   <p className="text-gray-400 text-sm">{loan.emiHistory.filter(e => e.status === 'paid').length}/{loan.months} EMI {t('paid')}</p>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap justify-end">
                     {loan.status === 'pending' && (<>
                       <button onClick={() => store.approveLoan(loan.id)} className={`${btnS} px-3 py-1.5 text-xs`}><CheckCircle className="w-3 h-3 inline mr-1" /> {t('approve')}</button>
                       <button onClick={() => store.rejectLoan(loan.id)} className={`${btnD} px-3 py-1.5 text-xs`}><XCircle className="w-3 h-3 inline mr-1" /> {t('reject')}</button>
                     </>)}
+                    {loan.status === 'active' && (
+                      <button onClick={() => { if (confirm(t('confirmForecloseLoan'))) store.forecloseLoan(loan.id); }} className={`${btnW} px-3 py-1.5 text-xs`}>{t('forecloseLoan')}</button>
+                    )}
                     <button onClick={() => setShowEMIDetail(loan.id)} className="bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs hover:bg-blue-500/30"><Eye className="w-3 h-3 inline mr-1" /> EMI</button>
+                    <button onClick={() => { if (confirm(t('confirmDeleteLoan'))) store.deleteLoan(loan.id); }} className="bg-red-500/20 text-red-400 p-1.5 rounded-lg hover:bg-red-500/30"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
               </div>
@@ -376,9 +457,10 @@ export default function AdminPanel() {
                   {getMonths().map(m => <option key={m} value={m} className="bg-slate-800">{m}</option>)}
                 </select>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button onClick={() => handleExportCSV()} className={`${btnP} px-3 py-1.5 text-sm flex items-center gap-1`}><Download className="w-3 h-3" /> CSV</button>
                 <button onClick={() => setShowBulkEntry(true)} className={`${btnW} px-3 py-1.5 text-sm flex items-center gap-1`}><FileText className="w-3 h-3" /> {t('bulkEntry')}</button>
+                <button onClick={() => setShowAddOldInterest(true)} className={`${btnS} px-3 py-1.5 text-sm flex items-center gap-1`}><Plus className="w-3 h-3" /> {t('addOldInterest')}</button>
               </div>
             </div>
             {store.contributions.filter(c => c.month === selectedMonth).length === 0 ? (
@@ -387,10 +469,14 @@ export default function AdminPanel() {
               store.contributions.filter(c => c.month === selectedMonth).map(c => (
                 <div key={c.id} className="bg-white/5 backdrop-blur rounded-xl p-3 border border-white/10 flex items-center justify-between">
                   <div>
-                    <p className="text-white font-medium">{c.memberName}</p>
+                    <p className="text-white font-medium">{c.memberName} {c.type === 'interest' && <span className="text-blue-400 text-xs ml-1">(Interest)</span>}</p>
                     <p className="text-gray-400 text-xs">{c.paidDate ? formatDate(c.paidDate) : ''} {c.penalty > 0 && <span className="text-red-400">+ {formatCurrency(c.penalty)} {t('penalty')}</span>}</p>
+                    {c.description && <p className="text-gray-500 text-xs italic">{c.description}</p>}
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs ${c.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t(c.status)} {formatCurrency(c.amount)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-full text-xs ${c.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t(c.status)} {formatCurrency(c.amount)}</span>
+                    <button onClick={() => { if (confirm(t('confirmDeleteContribution'))) store.deleteContribution(c.id); }} className="bg-red-500/20 text-red-400 p-1.5 rounded-lg hover:bg-red-500/30"><Trash2 className="w-3 h-3" /></button>
+                  </div>
                 </div>
               ))
             )}
@@ -553,8 +639,14 @@ export default function AdminPanel() {
               {nonAdminMembers.map(m => <option key={m.id} value={m.id} className="bg-slate-800">{m.name}</option>)}
             </select>
             <input type="number" value={oldLoanAmount} onChange={(e) => setOldLoanAmount(e.target.value)} placeholder={t('loanAmount')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input type="date" value={oldLoanOpening} onChange={(e) => setOldLoanOpening(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
-            <input type="date" value={oldLoanClosing} onChange={(e) => setOldLoanClosing(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <input type="date" value={oldLoanOpening} onChange={(e) => setOldLoanOpening(e.target.value)} placeholder={t('loanIssueDate')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <label className="flex items-center gap-3 text-white cursor-pointer">
+              <input type="checkbox" checked={oldLoanIsCurrentlyRunning} onChange={(e) => setOldLoanIsCurrentlyRunning(e.target.checked)} className="w-5 h-5 rounded" />
+              {t('isCurrentlyRunning')}
+            </label>
+            {!oldLoanIsCurrentlyRunning && (
+              <input type="date" value={oldLoanClosing} onChange={(e) => setOldLoanClosing(e.target.value)} placeholder={t('loanCloseDate')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            )}
             <select value={oldLoanMonths} onChange={(e) => setOldLoanMonths(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400">
               {[1,2,3,4,5,6].map(n => <option key={n} value={n} className="bg-slate-800">{n} माह</option>)}
             </select>
@@ -593,6 +685,37 @@ export default function AdminPanel() {
       )}
 
       {showEMIDetail && <EMIDetailModal loanId={showEMIDetail} onClose={() => setShowEMIDetail(null)} />}
+
+      {showAddOldInterest && (
+        <Modal title={t('addOldInterest')} onClose={() => setShowAddOldInterest(false)}>
+          <div className="space-y-4">
+            <select value={interestMemberId} onChange={(e) => setInterestMemberId(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+              <option value="" className="bg-slate-800">{t('selectMember')}</option>
+              {nonAdminMembers.map(m => <option key={m.id} value={m.id} className="bg-slate-800">{m.name}</option>)}
+            </select>
+            <input type="number" value={interestAmount} onChange={(e) => setInterestAmount(e.target.value)} placeholder={t('interestAmount')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <input type="date" value={interestDate} onChange={(e) => setInterestDate(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <input value={interestDescription} onChange={(e) => setInterestDescription(e.target.value)} placeholder={t('description')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <button onClick={handleAddOldInterest} className={`${btnS} w-full py-3`}>{t('save')}</button>
+          </div>
+        </Modal>
+      )}
+
+      {showInactiveDateModal && (
+        <Modal title={t('markInactive')} onClose={() => setShowInactiveDateModal(null)}>
+          <div className="space-y-4">
+            <p className="text-gray-300 text-sm">{t('inactiveSince')}</p>
+            <input type="date" value={inactiveDateForMember} onChange={(e) => setInactiveDateForMember(e.target.value)} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            <div className="flex gap-2">
+              <button onClick={() => {
+                store.setMemberInactiveStatus(showInactiveDateModal, inactiveDateForMember);
+                setShowInactiveDateModal(null);
+              }} className={`${btnW} flex-1 py-3`}>{t('markInactive')}</button>
+              <button onClick={() => setShowInactiveDateModal(null)} className={`${btnD} px-6 py-3`}>{t('cancel')}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
