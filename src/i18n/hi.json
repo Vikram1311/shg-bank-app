@@ -170,5 +170,6 @@
   "confirmDeleteLoan": "क्या आप इस ऋण को हटाना चाहते हैं?",
   "editContribution": "योगदान संपादित करें",
   "monthlyROI": "मासिक ROI",
-  "roiBreakdown": "ROI विवरण"
+  "roiBreakdown": "ROI विवरण",
+  "leaveBlankIfActive": "यदि ऋण अभी चल रहा है तो खाली छोड़ें"
 }

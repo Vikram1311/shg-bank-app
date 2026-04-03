@@ -81,6 +81,19 @@ export default function AdminPanel() {
   const [showInactiveDateModal, setShowInactiveDateModal] = useState<string | null>(null);
   const [inactiveDateForMember, setInactiveDateForMember] = useState(new Date().toISOString().split('T')[0]);
 
+  // Edit contribution state
+  const [showEditContribution, setShowEditContribution] = useState<string | null>(null);
+  const [editContribAmount, setEditContribAmount] = useState('');
+  const [editContribDate, setEditContribDate] = useState('');
+  const [editContribStatus, setEditContribStatus] = useState<'paid' | 'pending'>('paid');
+
+  // Edit loan state
+  const [showEditLoan, setShowEditLoan] = useState<string | null>(null);
+  const [editLoanAmount, setEditLoanAmount] = useState('');
+  const [editLoanOpening, setEditLoanOpening] = useState('');
+  const [editLoanClosing, setEditLoanClosing] = useState('');
+  const [editLoanStatus, setEditLoanStatus] = useState<'active' | 'completed' | 'foreclosed'>('active');
+
   const activeMembers = store.members.filter(m => m.isActive);
   const nonAdminMembers = activeMembers.filter(m => !m.isAdmin);
   const totalCollection = store.getTotalCollection();
@@ -143,6 +156,46 @@ export default function AdminPanel() {
     store.addOldInterest({ memberId: interestMemberId, amount: Number(interestAmount), date: interestDate, description: interestDescription || undefined });
     setInterestMemberId(''); setInterestAmount(''); setInterestDescription('');
     setShowAddOldInterest(false);
+  };
+
+  const handleEditContributionOpen = (contributionId: string) => {
+    const c = store.contributions.find(x => x.id === contributionId);
+    if (!c) return;
+    setEditContribAmount(String(c.amount));
+    setEditContribDate(c.paidDate ? c.paidDate.split('T')[0] : '');
+    setEditContribStatus(c.status === 'paid' ? 'paid' : 'pending');
+    setShowEditContribution(contributionId);
+  };
+
+  const handleEditContributionSave = () => {
+    if (!showEditContribution) return;
+    store.editContribution(showEditContribution, {
+      amount: Number(editContribAmount),
+      paidDate: editContribDate,
+      status: editContribStatus,
+    });
+    setShowEditContribution(null);
+  };
+
+  const handleEditLoanOpen = (loanId: string) => {
+    const l = store.loans.find(x => x.id === loanId);
+    if (!l) return;
+    setEditLoanAmount(String(l.amount));
+    setEditLoanOpening(l.openingDate ? l.openingDate.split('T')[0] : '');
+    setEditLoanClosing(l.closingDate ? l.closingDate.split('T')[0] : '');
+    setEditLoanStatus(l.status === 'completed' ? 'completed' : l.status === 'foreclosed' ? 'foreclosed' : 'active');
+    setShowEditLoan(loanId);
+  };
+
+  const handleEditLoanSave = () => {
+    if (!showEditLoan) return;
+    store.editLoan(showEditLoan, {
+      amount: Number(editLoanAmount),
+      openingDate: editLoanOpening,
+      closingDate: editLoanClosing.trim() !== '' ? editLoanClosing : null,
+      status: editLoanStatus,
+    });
+    setShowEditLoan(null);
   };
 
   const handleExportAdminCSV = () => {
@@ -436,6 +489,7 @@ export default function AdminPanel() {
                       <button onClick={() => { if (confirm(t('confirmForecloseLoan'))) store.forecloseLoan(loan.id); }} className={`${btnW} px-3 py-1.5 text-xs`}>{t('forecloseLoan')}</button>
                     )}
                     <button onClick={() => setShowEMIDetail(loan.id)} className="bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs hover:bg-blue-500/30"><Eye className="w-3 h-3 inline mr-1" /> EMI</button>
+                    <button onClick={() => handleEditLoanOpen(loan.id)} className="bg-blue-500/20 text-blue-400 p-1.5 rounded-lg hover:bg-blue-500/30"><Edit3 className="w-3 h-3" /></button>
                     <button onClick={() => { if (confirm(t('confirmDeleteLoan'))) store.deleteLoan(loan.id); }} className="bg-red-500/20 text-red-400 p-1.5 rounded-lg hover:bg-red-500/30"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
@@ -475,6 +529,7 @@ export default function AdminPanel() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-1 rounded-full text-xs ${c.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{t(c.status)} {formatCurrency(c.amount)}</span>
+                    <button onClick={() => handleEditContributionOpen(c.id)} className="bg-blue-500/20 text-blue-400 p-1.5 rounded-lg hover:bg-blue-500/30"><Edit3 className="w-3 h-3" /></button>
                     <button onClick={() => { if (confirm(t('confirmDeleteContribution'))) store.deleteContribution(c.id); }} className="bg-red-500/20 text-red-400 p-1.5 rounded-lg hover:bg-red-500/30"><Trash2 className="w-3 h-3" /></button>
                   </div>
                 </div>
@@ -712,6 +767,64 @@ export default function AdminPanel() {
                 setShowInactiveDateModal(null);
               }} className={`${btnW} flex-1 py-3`}>{t('markInactive')}</button>
               <button onClick={() => setShowInactiveDateModal(null)} className={`${btnD} px-6 py-3`}>{t('cancel')}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showEditContribution && (
+        <Modal title={t('editContribution')} onClose={() => setShowEditContribution(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-sm">{t('amount')}</label>
+              <input type="number" value={editContribAmount} onChange={(e) => setEditContribAmount(e.target.value)} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm">{t('paidDate')}</label>
+              <input type="date" value={editContribDate} onChange={(e) => setEditContribDate(e.target.value)} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm">{t('status')}</label>
+              <select value={editContribStatus} onChange={(e) => setEditContribStatus(e.target.value as 'paid' | 'pending')} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="paid" className="bg-slate-800">{t('paid')}</option>
+                <option value="pending" className="bg-slate-800">{t('pending')}</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleEditContributionSave} className={`${btnS} flex-1 py-3`}>{t('save')}</button>
+              <button onClick={() => setShowEditContribution(null)} className={`${btnD} px-6 py-3`}>{t('cancel')}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showEditLoan && (
+        <Modal title={`✏️ ${t('edit')} ${t('loans')}`} onClose={() => setShowEditLoan(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-gray-400 text-sm">{t('loanAmount')}</label>
+              <input type="number" value={editLoanAmount} onChange={(e) => setEditLoanAmount(e.target.value)} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm">{t('loanIssueDate')}</label>
+              <input type="date" value={editLoanOpening} onChange={(e) => setEditLoanOpening(e.target.value)} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm">{t('loanCloseDate')}</label>
+              <p className="text-gray-500 text-xs mt-0.5">{t('leaveBlankIfActive')}</p>
+              <input type="date" value={editLoanClosing} onChange={(e) => setEditLoanClosing(e.target.value)} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-gray-400 text-sm">{t('status')}</label>
+              <select value={editLoanStatus} onChange={(e) => setEditLoanStatus(e.target.value as 'active' | 'completed' | 'foreclosed')} className="w-full mt-1 px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400">
+                <option value="active" className="bg-slate-800">{t('active')}</option>
+                <option value="completed" className="bg-slate-800">{t('completed')}</option>
+                <option value="foreclosed" className="bg-slate-800">{t('foreclosed')}</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleEditLoanSave} className={`${btnS} flex-1 py-3`}>{t('save')}</button>
+              <button onClick={() => setShowEditLoan(null)} className={`${btnD} px-6 py-3`}>{t('cancel')}</button>
             </div>
           </div>
         </Modal>

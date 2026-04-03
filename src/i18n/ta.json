@@ -170,5 +170,6 @@
   "confirmDeleteLoan": "இந்தக் கடனை நீக்க விரும்புகிறீர்களா?",
   "editContribution": "பங்களிப்பு திருத்து",
   "monthlyROI": "மாதாந்திர ROI",
-  "roiBreakdown": "ROI விவரங்கள்"
+  "roiBreakdown": "ROI விவரங்கள்",
+  "leaveBlankIfActive": "கடன் தற்போது செயலில் இருந்தால் காலியாக விடவும்"
 }

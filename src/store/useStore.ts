@@ -83,6 +83,7 @@ interface AppState {
   
   // Admin edit
   editContribution: (contributionId: string, data: Partial<Contribution>) => void;
+  editLoan: (loanId: string, data: Partial<Loan>) => void;
   editEMI: (loanId: string, emiId: string, data: Partial<EMIRecord>) => void;
   
   // Settings
@@ -392,6 +393,12 @@ export const useStore = create<AppState>()(
       editContribution: (contributionId, data) => {
         set(s => ({
           contributions: s.contributions.map(c => c.id === contributionId ? { ...c, ...data } : c),
+        }));
+      },
+
+      editLoan: (loanId, data) => {
+        set(s => ({
+          loans: s.loans.map(l => l.id === loanId ? { ...l, ...data } : l),
         }));
       },
 

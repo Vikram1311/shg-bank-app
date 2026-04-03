@@ -170,5 +170,6 @@
   "confirmDeleteLoan": "Are you sure you want to delete this loan?",
   "editContribution": "Edit Contribution",
   "monthlyROI": "Monthly ROI",
-  "roiBreakdown": "ROI Breakdown"
+  "roiBreakdown": "ROI Breakdown",
+  "leaveBlankIfActive": "Leave blank if loan is currently active"
 }
