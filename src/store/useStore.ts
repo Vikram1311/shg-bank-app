@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Member, Loan, Contribution, EMIRecord, AppSettings, Notification, PenaltyRecord } from '../types';
 import { generateId, getDefaultPassword, calculateLoanDetails, getMonthKey, getContributionDueDate, calculatePenaltyDays } from '../utils/calculations';
+import { pushToCloud, pullFromCloud, type SyncableState } from '../lib/cloudSync';
+import { isCloudSyncEnabled } from '../lib/supabase';
 
 const DEFAULT_MEMBERS: Omit<Member, 'id'>[] = [
   { name: 'ADMIN', mobile: '9315341037', password: '1311', joiningDate: '2025-09-10', isAdmin: true, isActive: true, language: 'hi' },
@@ -124,6 +126,14 @@ interface AppState {
   getMemberLoanLimit: (memberId: string) => number;
   getAdminShare: () => { totalContribution: number; interestEarnings: number; penaltyEarnings: number; sharePercent: number };
   exportAdminCSV: () => string;
+
+  // Cloud sync
+  isSyncing: boolean;
+  lastSyncTime: string | null;
+  syncError: string | null;
+  cloudSyncEnabled: boolean;
+  pushStateToCloud: () => Promise<void>;
+  pullStateFromCloud: () => Promise<void>;
 }
 
 export const useStore = create<AppState>()(
@@ -137,6 +147,10 @@ export const useStore = create<AppState>()(
       notifications: [],
       settings: DEFAULT_SETTINGS,
       language: 'hi',
+      isSyncing: false,
+      lastSyncTime: null,
+      syncError: null,
+      cloudSyncEnabled: isCloudSyncEnabled(),
 
       login: (mobile, password) => {
         const member = get().members.find(m => m.mobile === mobile && m.password === password && m.isActive);
@@ -708,6 +722,54 @@ export const useStore = create<AppState>()(
         csv += `Total Penalty Collected,${totalPenalty}\n`;
         csv += `Overall SHG ROI,${overallROI}%\n`;
         return csv;
+      },
+
+      pushStateToCloud: async () => {
+        const state = get();
+        set({ isSyncing: true, syncError: null });
+        const result = await pushToCloud({
+          members: state.members,
+          loans: state.loans,
+          contributions: state.contributions,
+          penalties: state.penalties,
+          notifications: state.notifications,
+          settings: state.settings,
+        });
+        if (result.success) {
+          set({ isSyncing: false, lastSyncTime: new Date().toISOString(), syncError: null });
+        } else {
+          set({ isSyncing: false, syncError: result.error || 'Sync failed' });
+        }
+      },
+
+      pullStateFromCloud: async () => {
+        set({ isSyncing: true, syncError: null });
+        const result = await pullFromCloud();
+        if (result.success && result.data) {
+          const cloudData = result.data;
+          // Merge cloud members with local profile photos
+          const localMembers = get().members;
+          const mergedMembers = cloudData.members.map(cm => {
+            const localMember = localMembers.find(lm => lm.id === cm.id);
+            return localMember?.profilePhoto ? { ...cm, profilePhoto: localMember.profilePhoto } : cm;
+          });
+          set({
+            members: mergedMembers,
+            loans: cloudData.loans,
+            contributions: cloudData.contributions,
+            penalties: cloudData.penalties,
+            notifications: cloudData.notifications,
+            settings: cloudData.settings,
+            isSyncing: false,
+            lastSyncTime: new Date().toISOString(),
+            syncError: null,
+          });
+        } else if (result.success && !result.data) {
+          // No cloud data yet - nothing to pull
+          set({ isSyncing: false, lastSyncTime: new Date().toISOString(), syncError: null });
+        } else {
+          set({ isSyncing: false, syncError: result.error || 'Sync failed' });
+        }
       },
     }),
     {
