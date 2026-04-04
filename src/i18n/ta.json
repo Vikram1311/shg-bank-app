@@ -176,5 +176,10 @@
   "shareAppDesc": "SHG உறுப்பினர்களுடன் ஆப்பைப் பகிரவும்",
   "downloadApk": "APK பதிவிறக்கு",
   "linkCopied": "இணைப்பு நகலெடுக்கப்பட்டது!",
-  "shareAppMessage": "SHG Bank ஆப்பைப் பதிவிறக்கவும்:"
+  "shareAppMessage": "SHG Bank ஆப்பைப் பதிவிறக்கவும்:",
+  "cloudSync": "கிளவுட் ஒத்திசைவு",
+  "syncingData": "தரவு ஒத்திசைக்கப்படுகிறது...",
+  "syncSuccess": "தரவு வெற்றிகரமாக ஒத்திசைக்கப்பட்டது",
+  "syncError": "ஒத்திசைவு பிழை",
+  "loadingFromCloud": "கிளவுட்டிலிருந்து தரவு ஏற்றப்படுகிறது..."
 }

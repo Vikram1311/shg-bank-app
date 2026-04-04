@@ -176,5 +176,10 @@
   "shareAppDesc": "Share this app with SHG members",
   "downloadApk": "Download APK",
   "linkCopied": "Link copied!",
-  "shareAppMessage": "Download SHG Bank App:"
+  "shareAppMessage": "Download SHG Bank App:",
+  "cloudSync": "Cloud Sync",
+  "syncingData": "Syncing data...",
+  "syncSuccess": "Data synced successfully",
+  "syncError": "Sync error",
+  "loadingFromCloud": "Loading data from cloud..."
 }

@@ -6,8 +6,10 @@ import { formatCurrency, formatDate, getMonthKey, calculateLoanDetails, calculat
 import {
   IndianRupee, TrendingUp, Wallet, CreditCard, User, Lock, Camera,
   ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Bell,
-  FileText, Eye, XCircle, Banknote, ArrowUpCircle, Download, Share2
+  FileText, Eye, XCircle, Banknote, ArrowUpCircle, Download, Share2, RefreshCw
 } from 'lucide-react';
+import { isCloudSyncEnabled } from '../lib/supabase';
+import { pullFromCloud, mergeCloudData } from '../lib/cloudSync';
 
 type MemberTab = 'dashboard' | 'loans' | 'history' | 'profile';
 
@@ -34,6 +36,24 @@ export default function MemberPage() {
   // Edit profile
   const [editName, setEditName] = useState('');
   const [editMobile, setEditMobile] = useState('');
+
+  // Cloud sync
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleCloudRefresh = async () => {
+    if (!isCloudSyncEnabled() || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const cloudData = await pullFromCloud();
+      if (cloudData) {
+        const localMembers = useStore.getState().members;
+        const merged = mergeCloudData(localMembers, cloudData);
+        useStore.setState(merged);
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Photo
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -129,6 +149,11 @@ export default function MemberPage() {
                 <option value="en">English</option>
                 {member.name === 'RAVI ARUMUGAM' && <option value="ta">தமிழ்</option>}
               </select>
+              {isCloudSyncEnabled() && (
+                <button onClick={handleCloudRefresh} disabled={isSyncing} className="bg-white/10 border border-white/20 text-white rounded-lg px-2 py-1.5 text-xs hover:bg-white/20 transition-all disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                </button>
+              )}
               <button onClick={() => store.logout()} className={btnDanger + " px-3 py-1.5 text-xs"}>
                 <ArrowUpCircle className="w-4 h-4" />
               </button>

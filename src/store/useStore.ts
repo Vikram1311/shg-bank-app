@@ -126,6 +126,8 @@ interface AppState {
   exportAdminCSV: () => string;
 }
 
+export type { AppState };
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -715,3 +717,13 @@ export const useStore = create<AppState>()(
     }
   )
 );
+
+// Cloud sync: push state to Supabase on every change (debounced)
+import { isCloudSyncEnabled } from '../lib/supabase';
+import { debouncedPushToCloud } from '../lib/cloudSync';
+
+if (isCloudSyncEnabled()) {
+  useStore.subscribe((state) => {
+    debouncedPushToCloud(state);
+  });
+}

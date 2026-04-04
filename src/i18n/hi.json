@@ -176,5 +176,10 @@
   "shareAppDesc": "SHG सदस्यों के साथ ऐप शेयर करें",
   "downloadApk": "APK डाउनलोड करें",
   "linkCopied": "लिंक कॉपी हो गया!",
-  "shareAppMessage": "SHG Bank ऐप डाउनलोड करें:"
+  "shareAppMessage": "SHG Bank ऐप डाउनलोड करें:",
+  "cloudSync": "क्लाउड सिंक",
+  "syncingData": "डेटा सिंक हो रहा है...",
+  "syncSuccess": "डेटा सिंक हो गया",
+  "syncError": "सिंक में त्रुटि",
+  "loadingFromCloud": "क्लाउड से डेटा लोड हो रहा है..."
 }
