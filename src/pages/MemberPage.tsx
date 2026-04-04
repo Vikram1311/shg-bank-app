@@ -391,6 +391,56 @@ export default function MemberPage() {
                 </div>
               )}
             </div>
+
+            {/* Monthly ROI Breakdown */}
+            {(() => {
+              const sortedContribs = [...myContributions].sort((a, b) => a.month.localeCompare(b.month));
+              if (sortedContribs.length === 0) return null;
+              const monthlyData: Record<string, { contrib: number; interest: number }> = {};
+              sortedContribs.forEach(c => {
+                if (!monthlyData[c.month]) monthlyData[c.month] = { contrib: 0, interest: 0 };
+                if (c.type === 'interest') monthlyData[c.month].interest += c.amount;
+                else monthlyData[c.month].contrib += c.amount;
+              });
+              let balance = 0;
+              const rows = Object.entries(monthlyData).sort(([a], [b]) => a.localeCompare(b)).map(([month, data]) => {
+                const opening = balance;
+                const roi = opening > 0 ? Math.round((data.interest / opening) * 10000) / 100 : 0;
+                balance = opening + data.contrib + data.interest;
+                return { month, opening, contrib: data.contrib, interest: data.interest, roi, closing: balance };
+              });
+              return (
+                <div className="bg-white/5 backdrop-blur rounded-2xl p-4 border border-white/10">
+                  <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-yellow-400" /> {t('monthlyROI')}
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-white/10">
+                          <th className="text-left py-1.5 px-1">{t('month')}</th>
+                          <th className="text-right py-1.5 px-1">{t('contributions')}</th>
+                          <th className="text-right py-1.5 px-1">{t('interest')}</th>
+                          <th className="text-right py-1.5 px-1">ROI%</th>
+                          <th className="text-right py-1.5 px-1">{t('total')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, i) => (
+                          <tr key={i} className="border-b border-white/5">
+                            <td className="py-1.5 px-1 text-gray-300">{row.month}</td>
+                            <td className="py-1.5 px-1 text-right text-emerald-400">{row.contrib > 0 ? formatCurrency(row.contrib) : '-'}</td>
+                            <td className="py-1.5 px-1 text-right text-blue-400">{row.interest > 0 ? formatCurrency(row.interest) : '-'}</td>
+                            <td className="py-1.5 px-1 text-right text-yellow-400">{row.roi > 0 ? `${row.roi}%` : '-'}</td>
+                            <td className="py-1.5 px-1 text-right text-white font-medium">{formatCurrency(row.closing)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
