@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS app_data (
 -- Enable Row Level Security
 ALTER TABLE app_data ENABLE ROW LEVEL SECURITY;
 
+-- NOTE: These policies allow public read/write access using the anon key.
+-- This is acceptable for a small private SHG group app where the Supabase
+-- URL and anon key are only embedded in the app used by group members.
+-- For production use with sensitive data, consider adding Supabase Auth
+-- and restricting write access to authenticated admin users only.
+
 -- Allow anyone with the anon key to read data
 CREATE POLICY "Allow public read" ON app_data
   FOR SELECT USING (true);

@@ -619,10 +619,10 @@ export default function AdminPanel() {
                 <div>
                   <div className="flex items-center gap-2 text-emerald-400 mb-3">
                     <Cloud className="w-5 h-5" />
-                    <span className="text-sm">Cloud sync is active</span>
+                    <span className="text-sm">{t('cloudSyncActive')}</span>
                   </div>
                   <p className="text-gray-400 text-xs mb-3">
-                    Data automatically syncs to cloud. Members on other devices will see updated data.
+                    {t('cloudSyncDesc')}
                   </p>
                   <button
                     onClick={async () => {
@@ -633,17 +633,17 @@ export default function AdminPanel() {
                     }}
                     className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold py-3 px-4 rounded-xl transition-all"
                   >
-                    <RefreshCw className="w-5 h-5" /> Sync Now
+                    <RefreshCw className="w-5 h-5" /> {t('syncNow')}
                   </button>
                 </div>
               ) : (
                 <div>
                   <div className="flex items-center gap-2 text-yellow-400 mb-3">
                     <CloudOff className="w-5 h-5" />
-                    <span className="text-sm">Cloud sync not configured</span>
+                    <span className="text-sm">{t('cloudSyncNotConfigured')}</span>
                   </div>
                   <p className="text-gray-400 text-xs">
-                    Data is stored only on this device. To enable cloud sync so members can see data on their mobile phones, set up Supabase and add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.
+                    {t('cloudSyncNotConfiguredDesc')}
                   </p>
                 </div>
               )}

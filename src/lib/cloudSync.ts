@@ -54,11 +54,7 @@ export async function pushToCloud(state: SyncableState): Promise<boolean> {
 
   try {
     // Strip profilePhoto from members to reduce payload size
-    const membersWithoutPhotos = state.members.map(m => {
-      const { profilePhoto, ...rest } = m;
-      void profilePhoto;
-      return rest;
-    });
+    const membersWithoutPhotos = state.members.map(({ profilePhoto: _profilePhoto, ...rest }) => rest);
 
     const { error } = await supabase
       .from('app_data')
@@ -104,9 +100,6 @@ export function mergeCloudData(
       profilePhoto: localMember?.profilePhoto || cloudMember.profilePhoto,
     };
   });
-
-  // Add any cloud members that don't exist locally
-  // (already handled by map above since we iterate cloud members)
 
   return {
     members: mergedMembers,

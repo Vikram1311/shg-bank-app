@@ -181,5 +181,10 @@
   "syncingData": "Syncing data...",
   "syncSuccess": "Data synced successfully",
   "syncError": "Sync error",
-  "loadingFromCloud": "Loading data from cloud..."
+  "loadingFromCloud": "Loading data from cloud...",
+  "cloudSyncActive": "Cloud sync is active",
+  "cloudSyncDesc": "Data automatically syncs to cloud. Members on other devices will see updated data.",
+  "syncNow": "Sync Now",
+  "cloudSyncNotConfigured": "Cloud sync not configured",
+  "cloudSyncNotConfiguredDesc": "Data is stored only on this device. To enable cloud sync so members can see data on their mobile phones, set up Supabase and add environment variables."
 }
