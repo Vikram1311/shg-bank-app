@@ -171,5 +171,10 @@
   "editContribution": "பங்களிப்பு திருத்து",
   "monthlyROI": "மாதாந்திர ROI",
   "roiBreakdown": "ROI விவரங்கள்",
-  "leaveBlankIfActive": "கடன் தற்போது செயலில் இருந்தால் காலியாக விடவும்"
+  "leaveBlankIfActive": "கடன் தற்போது செயலில் இருந்தால் காலியாக விடவும்",
+  "shareApp": "ஆப்பைப் பகிரவும்",
+  "shareAppDesc": "SHG உறுப்பினர்களுடன் ஆப்பைப் பகிரவும்",
+  "downloadApk": "APK பதிவிறக்கு",
+  "linkCopied": "இணைப்பு நகலெடுக்கப்பட்டது!",
+  "shareAppMessage": "SHG Bank ஆப்பைப் பதிவிறக்கவும்:"
 }
