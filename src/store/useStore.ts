@@ -120,6 +120,7 @@ interface AppState {
   deleteLoan: (id: string) => void;
   addOldInterest: (data: { memberId: string; amount: number; date: string; description?: string }) => void;
   forecloseLoan: (loanId: string) => void;
+  getForeclosureSummary: (loanId: string) => { loanAmount: number; interestRate: number; daysActive: number; paidEmis: number; totalEmis: number; pendingInterest: number; pendingPrincipal: number; totalSettlement: number } | null;
   setMemberInactiveStatus: (memberId: string, inactiveSince: string | null) => void;
   getMemberLoanLimit: (memberId: string) => number;
   getAdminShare: () => { totalContribution: number; interestEarnings: number; penaltyEarnings: number; sharePercent: number };
@@ -355,18 +356,20 @@ export const useStore = create<AppState>()(
           if (daysLate > 0) penalty = daysLate * get().settings.lateFeePerDay;
         }
 
+        const contributionId = generateId();
+
         const penaltyRecord: PenaltyRecord = penalty > 0 ? {
           id: generateId(),
           memberId,
           type: 'contribution',
-          referenceId: '',
+          referenceId: contributionId,
           amount: penalty,
           date: paidDate,
           daysLate: Math.ceil(penalty / get().settings.lateFeePerDay),
         } : null as any;
 
         const contribution: Contribution = {
-          id: generateId(),
+          id: contributionId,
           memberId,
           memberName: member.name,
           amount: get().settings.monthlyContribution,
@@ -376,6 +379,7 @@ export const useStore = create<AppState>()(
           penalty,
           status: 'paid',
           approvedByMember: true,
+          type: 'contribution',
         };
 
         set(s => ({
@@ -623,6 +627,29 @@ export const useStore = create<AppState>()(
             closingDate: today,
           } : l),
         }));
+      },
+
+      getForeclosureSummary: (loanId) => {
+        const loan = get().loans.find(l => l.id === loanId);
+        if (!loan) return null;
+        const today = new Date();
+        const opening = new Date(loan.openingDate);
+        const daysActive = Math.max(1, Math.ceil((today.getTime() - opening.getTime()) / (1000 * 60 * 60 * 24)));
+        const paidEmis = loan.emiHistory.filter(e => e.status === 'paid').length;
+        const unpaidEmis = loan.emiHistory.filter(e => e.status !== 'paid');
+        const pendingInterest = unpaidEmis.reduce((sum, e) => sum + e.interestComponent, 0);
+        const pendingPrincipal = unpaidEmis.reduce((sum, e) => sum + (e.amount - e.interestComponent), 0);
+        const totalSettlement = pendingPrincipal + pendingInterest;
+        return {
+          loanAmount: loan.amount,
+          interestRate: get().settings.interestRate,
+          daysActive,
+          paidEmis,
+          totalEmis: loan.months,
+          pendingInterest,
+          pendingPrincipal,
+          totalSettlement,
+        };
       },
 
       setMemberInactiveStatus: (memberId, inactiveSince) => {
