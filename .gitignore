@@ -35,3 +35,13 @@ npm-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Android build outputs
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/build/
+android/.gradle/
+*.apk
+*.aab
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json

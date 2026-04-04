@@ -52,6 +52,63 @@ A flexible, feature-rich React template designed for AI-generated websites with 
    npm run preview
    ```
 
+## 📱 Download APK
+
+[![Build Android APK](https://github.com/Vikram1311/shg-bank-app/actions/workflows/build-apk.yml/badge.svg)](https://github.com/Vikram1311/shg-bank-app/actions/workflows/build-apk.yml)
+
+👉 **[📥 Download Latest APK](https://github.com/Vikram1311/shg-bank-app/releases/latest/download/app-debug.apk)** 👈
+
+> Phone me install karne ke liye "Install from Unknown Sources" enable karein Settings mein.
+
+---
+
+## 📱 Build Android APK (Manual)
+
+This app uses [Capacitor](https://capacitorjs.com/) to generate a native Android APK.
+
+### Prerequisites
+
+- **Java JDK 17+** – [Download](https://adoptium.net/)
+- **Android Studio** – [Download](https://developer.android.com/studio) (or just the command-line tools)
+- Set `ANDROID_HOME` environment variable to your Android SDK path
+
+### Build Steps
+
+1. **Install dependencies** (if not already done):
+   ```bash
+   npm install
+   ```
+
+2. **Build web app + sync + generate debug APK** (one command):
+   ```bash
+   npm run build:android
+   ```
+
+3. **Your APK will be at**:
+   ```
+   android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+4. **Transfer to phone** and install. (Enable "Install from Unknown Sources" in Settings.)
+
+### Other Useful Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm run cap:sync` | Sync web assets to Android project |
+| `npm run cap:open` | Open in Android Studio |
+| `npm run build:android` | Build debug APK |
+| `npm run build:android:release` | Build release APK |
+
+### Open in Android Studio
+
+If you want to use Android Studio to build/debug:
+```bash
+npm run build
+npm run cap:open
+```
+Then click **Run ▶️** in Android Studio.
+
 ## 📁 Project Structure
 
 ```
