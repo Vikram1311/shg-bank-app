@@ -52,7 +52,17 @@ A flexible, feature-rich React template designed for AI-generated websites with 
    npm run preview
    ```
 
-## 📱 Build Android APK
+## 📱 Download APK
+
+[![Build Android APK](https://github.com/Vikram1311/shg-bank-app/actions/workflows/build-apk.yml/badge.svg)](https://github.com/Vikram1311/shg-bank-app/actions/workflows/build-apk.yml)
+
+👉 **[📥 Download Latest APK](https://github.com/Vikram1311/shg-bank-app/releases/latest/download/app-debug.apk)** 👈
+
+> Phone me install karne ke liye "Install from Unknown Sources" enable karein Settings mein.
+
+---
+
+## 📱 Build Android APK (Manual)
 
 This app uses [Capacitor](https://capacitorjs.com/) to generate a native Android APK.
 
