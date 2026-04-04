@@ -203,7 +203,7 @@ export default function MemberPage() {
               </h3>
               <div className="flex flex-col items-center bg-white rounded-2xl p-4">
                 <QRCodeSVG value={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} size={160} />
-                <p className="text-gray-800 font-bold mt-2">{store.settings.upiId}</p>
+                <a href={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} className="text-blue-600 font-bold mt-2 underline">{store.settings.upiId}</a>
                 <p className="text-gray-500 text-xs">{t('scanToPay')}</p>
               </div>
             </div>

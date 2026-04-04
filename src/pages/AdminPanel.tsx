@@ -564,7 +564,7 @@ export default function AdminPanel() {
               <h3 className="text-white font-semibold">{t('paymentQR')}</h3>
               <div className="flex flex-col items-center bg-white rounded-2xl p-6">
                 <QRCodeSVG value={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} size={180} />
-                <p className="text-gray-800 font-bold mt-3 text-lg">{store.settings.upiId}</p>
+                <a href={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} className="text-blue-600 font-bold mt-3 text-lg underline">{store.settings.upiId}</a>
               </div>
             </div>
             <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10 space-y-4">
