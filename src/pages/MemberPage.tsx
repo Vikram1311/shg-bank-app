@@ -519,9 +519,9 @@ export default function MemberPage() {
                     const apkUrl = 'https://github.com/Vikram1311/shg-bank-app/releases/latest/download/app-debug.apk';
                     const shareText = `${t('shareAppMessage')} ${apkUrl}`;
                     if (navigator.share) {
-                      navigator.share({ title: t('appName'), text: shareText, url: apkUrl }).catch(() => {});
+                      navigator.share({ title: t('appName'), text: shareText, url: apkUrl }).catch(() => { /* user cancelled share dialog */ });
                     } else {
-                      navigator.clipboard.writeText(apkUrl).then(() => alert(t('linkCopied'))).catch(() => {});
+                      navigator.clipboard.writeText(apkUrl).then(() => alert(t('linkCopied'))).catch(() => { window.prompt(t('linkCopied'), apkUrl); });
                     }
                   }}
                   className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition-all text-sm"
