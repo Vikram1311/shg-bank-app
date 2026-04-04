@@ -171,5 +171,10 @@
   "editContribution": "Edit Contribution",
   "monthlyROI": "Monthly ROI",
   "roiBreakdown": "ROI Breakdown",
-  "leaveBlankIfActive": "Leave blank if loan is currently active"
+  "leaveBlankIfActive": "Leave blank if loan is currently active",
+  "shareApp": "Share App",
+  "shareAppDesc": "Share this app with SHG members",
+  "downloadApk": "Download APK",
+  "linkCopied": "Link copied!",
+  "shareAppMessage": "Download SHG Bank App:"
 }

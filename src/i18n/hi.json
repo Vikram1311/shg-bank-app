@@ -171,5 +171,10 @@
   "editContribution": "योगदान संपादित करें",
   "monthlyROI": "मासिक ROI",
   "roiBreakdown": "ROI विवरण",
-  "leaveBlankIfActive": "यदि ऋण अभी चल रहा है तो खाली छोड़ें"
+  "leaveBlankIfActive": "यदि ऋण अभी चल रहा है तो खाली छोड़ें",
+  "shareApp": "ऐप शेयर करें",
+  "shareAppDesc": "SHG सदस्यों के साथ ऐप शेयर करें",
+  "downloadApk": "APK डाउनलोड करें",
+  "linkCopied": "लिंक कॉपी हो गया!",
+  "shareAppMessage": "SHG Bank ऐप डाउनलोड करें:"
 }

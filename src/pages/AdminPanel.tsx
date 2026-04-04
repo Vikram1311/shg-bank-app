@@ -7,7 +7,7 @@ import { calculateLoanDetails } from '../utils/calculations';
 import {
   Users, IndianRupee, TrendingUp, Wallet, LogOut, Plus, Trash2, Edit3, Download,
   Send, Settings, Eye, CheckCircle, XCircle, Banknote,
-  AlertTriangle, CreditCard, FileText, Bell, UserPlus
+  AlertTriangle, CreditCard, FileText, Bell, UserPlus, Share2, ExternalLink
 } from 'lucide-react';
 
 type AdminTab = 'dashboard' | 'members' | 'loans' | 'contributions' | 'messages' | 'settings';
@@ -564,7 +564,7 @@ export default function AdminPanel() {
               <h3 className="text-white font-semibold">{t('paymentQR')}</h3>
               <div className="flex flex-col items-center bg-white rounded-2xl p-6">
                 <QRCodeSVG value={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} size={180} />
-                <p className="text-gray-800 font-bold mt-3 text-lg">{store.settings.upiId}</p>
+                <a href={`upi://pay?pa=${store.settings.upiId}&pn=SHG%20Bank`} className="text-blue-600 font-bold mt-3 text-lg underline">{store.settings.upiId}</a>
               </div>
             </div>
             <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10 space-y-4">
@@ -582,6 +582,34 @@ export default function AdminPanel() {
             <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10">
               <h3 className="text-white font-semibold mb-4">🔒 {t('changePassword')}</h3>
               <AdminChangePassword />
+            </div>
+            <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10">
+              <h3 className="text-white font-semibold mb-2">📲 {t('shareApp')}</h3>
+              <p className="text-gray-400 text-sm mb-4">{t('shareAppDesc')}</p>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <a
+                  href="https://github.com/Vikram1311/shg-bank-app/releases/latest/download/app-debug.apk"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold py-3 px-4 rounded-xl transition-all"
+                >
+                  <Download className="w-5 h-5" /> {t('downloadApk')}
+                </a>
+                <button
+                  onClick={() => {
+                    const apkUrl = 'https://github.com/Vikram1311/shg-bank-app/releases/latest/download/app-debug.apk';
+                    const shareText = `${t('shareAppMessage')} ${apkUrl}`;
+                    if (navigator.share) {
+                      navigator.share({ title: t('appName'), text: shareText, url: apkUrl }).catch(() => { /* user cancelled share dialog */ });
+                    } else {
+                      navigator.clipboard.writeText(apkUrl).then(() => alert(t('linkCopied'))).catch(() => { window.prompt(t('linkCopied'), apkUrl); });
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition-all"
+                >
+                  <Share2 className="w-5 h-5" /> {t('shareApp')}
+                </button>
+              </div>
             </div>
           </div>
         )}
