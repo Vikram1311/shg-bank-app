@@ -2,19 +2,21 @@ name: Build Android APK
 
 on:
   push:
-    branches: ['*']
-  pull_request:
-    branches: ['*']
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -29,22 +31,36 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
-      - name: Set up Android SDK
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Build debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: shg-bank-debug-apk
+          name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: APK Build #${{ github.run_number }} (${{ steps.date.outputs.date }})
+          body: |
+            🤖 Automated APK build from commit ${{ github.sha }}
+
+            📥 Download the APK file below and install on your Android phone.
+            *(Enable "Install from Unknown Sources" in Settings)*
+          files: android/app/build/outputs/apk/debug/app-debug.apk
