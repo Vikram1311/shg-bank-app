@@ -40,13 +40,15 @@ export default function MemberPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-refresh from cloud every 60 seconds
+  const pullStateFromCloud = store.pullStateFromCloud;
+  const cloudSyncEnabled = store.cloudSyncEnabled;
   useEffect(() => {
-    if (!store.cloudSyncEnabled) return;
+    if (!cloudSyncEnabled) return;
     const interval = setInterval(() => {
-      store.pullStateFromCloud();
+      pullStateFromCloud();
     }, 60000);
     return () => clearInterval(interval);
-  }, [store.cloudSyncEnabled]);
+  }, [cloudSyncEnabled, pullStateFromCloud]);
 
   const member = store.getMember(store.currentUserId!);
   if (!member) return null;

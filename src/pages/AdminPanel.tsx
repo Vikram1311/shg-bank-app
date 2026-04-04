@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
@@ -110,29 +110,21 @@ export default function AdminPanel() {
   const notifications = store.notifications;
   const settings = store.settings;
 
-  const pushTimerRef = useCallback(() => {
-    // Debounced push - uses a closure but is stable
-    let timer: ReturnType<typeof setTimeout>;
-    return () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        pushStateToCloud();
-      }, 2000);
-    };
-  }, [pushStateToCloud]);
-
-  // Track first render to skip initial push
-  const [isInitialRender, setIsInitialRender] = useState(true);
-  const debouncedPush = useCallback(pushTimerRef(), [pushTimerRef]);
+  const isFirstRender = useRef(true);
+  const pushTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     if (!cloudSyncEnabled) return;
-    if (isInitialRender) {
-      setIsInitialRender(false);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
       return;
     }
-    debouncedPush();
-  }, [members, loans, contributions, penalties, notifications, settings, cloudSyncEnabled, isInitialRender, debouncedPush]);
+    clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => {
+      pushStateToCloud();
+    }, 2000);
+    return () => clearTimeout(pushTimer.current);
+  }, [members, loans, contributions, penalties, notifications, settings, cloudSyncEnabled, pushStateToCloud]);
   const remainingBalance = store.getRemainingBalance();
   const totalPenalty = store.getTotalPenaltyCollected();
   const totalInterest = store.getTotalInterestCollected();
