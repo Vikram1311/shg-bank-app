@@ -182,5 +182,10 @@
   "lastSync": "Last Sync",
   "syncReady": "Cloud Sync Ready",
   "refresh": "Refresh",
-  "syncing": "Syncing..."
+  "syncing": "Syncing...",
+  "enterMobile": "Enter mobile number",
+  "enterPassword": "Enter password",
+  "enterBothFields": "Please enter mobile number and password",
+  "wrongCredentials": "Wrong mobile number or password",
+  "shgTagline": "Self Help Group Bank"
 }

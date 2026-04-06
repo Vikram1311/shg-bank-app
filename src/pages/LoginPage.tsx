@@ -14,12 +14,12 @@ export default function LoginPage() {
 
   const handleLogin = () => {
     if (!mobile || !password) {
-      setError('कृपया मोबाइल नंबर और पासवर्ड दर्ज करें');
+      setError(t('enterBothFields'));
       return;
     }
     const member = login(mobile, password);
     if (!member) {
-      setError('गलत मोबाइल नंबर या पासवर्ड');
+      setError(t('wrongCredentials'));
       return;
     }
   };
@@ -40,7 +40,7 @@ export default function LoginPage() {
             <Banknote className="w-12 h-12 text-white" />
           </div>
           <h1 className="text-4xl font-extrabold text-white tracking-tight">SHG BANK</h1>
-          <p className="text-purple-200 mt-2 text-lg">स्वयं सहायता समूह बैंक</p>
+          <p className="text-purple-200 mt-2 text-lg">{t('shgTagline')}</p>
         </div>
 
         {/* Login Card */}
@@ -55,7 +55,7 @@ export default function LoginPage() {
                     type="tel"
                     value={mobile}
                     onChange={(e) => setMobile(e.target.value)}
-                    placeholder="मोबाइल नंबर दर्ज करें"
+                    placeholder={t('enterMobile')}
                     className="w-full pl-12 pr-4 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
                     maxLength={10}
                   />
@@ -70,7 +70,7 @@ export default function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="पासवर्ड दर्ज करें"
+                    placeholder={t('enterPassword')}
                     className="w-full pl-12 pr-12 py-4 bg-white/10 border border-white/20 rounded-2xl text-white placeholder-purple-300/50 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent transition-all"
                     onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
                   />
