@@ -937,18 +937,18 @@ function AdminChangePassword() {
   const handleSave = () => {
     const user = store.getMember(store.currentUserId!);
     if (!user) return;
-    if (current !== user.password) { setError('वर्तमान पासवर्ड गलत है'); return; }
-    if (newPass.length < 4) { setError('पासवर्ड कम से कम 4 अंक का होना चाहिए'); return; }
-    if (newPass !== confirm) { setError('पासवर्ड मेल नहीं खाता'); return; }
+    if (current !== user.password) { setError(t('currentPasswordWrong')); return; }
+    if (newPass.length < 4) { setError(t('passwordMinLength')); return; }
+    if (newPass !== confirm) { setError(t('passwordMismatch')); return; }
     store.changePassword(user.id, newPass);
     setError(''); setCurrent(''); setNewPass(''); setConfirm('');
-    alert('पासवर्ड बदला गया!');
+    alert(t('passwordChanged'));
   };
   return (
     <div className="space-y-3">
-      <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="वर्तमान पासवर्ड" className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
-      <input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="नया पासवर्ड" className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
-      <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="पासवर्ड की पुष्टि करें" className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} placeholder={t('enterCurrentPassword')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      <input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder={t('enterNewPassword')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
+      <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={t('confirmPasswordPlaceholder')} className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-400" />
       {error && <p className="text-red-400 text-sm">{error}</p>}
       <button onClick={handleSave} className="bg-emerald-500 text-white w-full py-3 rounded-xl font-semibold hover:bg-emerald-600">{t('save')}</button>
     </div>

@@ -187,5 +187,15 @@
   "enterPassword": "पासवर्ड दर्ज करें",
   "enterBothFields": "कृपया मोबाइल नंबर और पासवर्ड दर्ज करें",
   "wrongCredentials": "गलत मोबाइल नंबर या पासवर्ड",
-  "shgTagline": "स्वयं सहायता समूह बैंक"
+  "shgTagline": "स्वयं सहायता समूह बैंक",
+  "currentPasswordWrong": "वर्तमान पासवर्ड गलत है",
+  "passwordMinLength": "पासवर्ड कम से कम 4 अंक का होना चाहिए",
+  "passwordMismatch": "पासवर्ड मेल नहीं खाता",
+  "passwordChanged": "पासवर्ड बदला गया!",
+  "upiPaymentInstruction": "कृपया UPI QR कोड से भुगतान करें। एडमिन द्वारा सत्यापन के बाद योगदान दिखाई देगा।",
+  "interestLabel": "ब्याज",
+  "balanceLabel": "शेष",
+  "enterCurrentPassword": "वर्तमान पासवर्ड",
+  "enterNewPassword": "नया पासवर्ड",
+  "confirmPasswordPlaceholder": "पासवर्ड की पुष्टि करें"
 }

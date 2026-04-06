@@ -79,14 +79,14 @@ export default function MemberPage() {
   };
 
   const handleChangePass = () => {
-    if (currentPass !== member.password) { setPassError('वर्तमान पासवर्ड गलत है'); return; }
-    if (newPass.length < 4) { setPassError('पासवर्ड कम से कम 4 अंक का होना चाहिए'); return; }
-    if (newPass !== confirmPass) { setPassError('पासवर्ड मेल नहीं खाता'); return; }
+    if (currentPass !== member.password) { setPassError(t('currentPasswordWrong')); return; }
+    if (newPass.length < 4) { setPassError(t('passwordMinLength')); return; }
+    if (newPass !== confirmPass) { setPassError(t('passwordMismatch')); return; }
     store.changePassword(member.id, newPass);
     setPassError('');
     setShowChangePass(false);
     setCurrentPass(''); setNewPass(''); setConfirmPass('');
-    alert('पासवर्ड बदला गया!');
+    alert(t('passwordChanged'));
   };
 
   const handleEditProfile = () => {
@@ -289,7 +289,7 @@ export default function MemberPage() {
             )}
 
             {/* Contribution Deposit */}
-            <button onClick={() => alert('कृपया UPI QR कोड से भुगतान करें। एडमिन द्वारा सत्यापन के बाद योगदान दिखाई देगा।')} className={btnPrimary + " w-full py-3 text-center flex items-center justify-center gap-2"}>
+            <button onClick={() => alert(t('upiPaymentInstruction'))} className={btnPrimary + " w-full py-3 text-center flex items-center justify-center gap-2"}>
               <IndianRupee className="w-5 h-5" /> {t('contributionDeposit')}
             </button>
           </div>
@@ -672,8 +672,8 @@ export default function MemberPage() {
                       <div key={i} className="flex justify-between text-xs bg-white/5 rounded-lg p-1.5">
                         <span className="text-gray-400">EMI #{b.emiNumber}</span>
                         <span className="text-white">{formatCurrency(b.amount)}</span>
-                        <span className="text-blue-400">ब्याज: {formatCurrency(b.interest)}</span>
-                        <span className="text-gray-400">शेष: {formatCurrency(b.remaining)}</span>
+                        <span className="text-blue-400">{t('interestLabel')}: {formatCurrency(b.interest)}</span>
+                        <span className="text-gray-400">{t('balanceLabel')}: {formatCurrency(b.remaining)}</span>
                       </div>
                     ))}
                   </div>
@@ -739,7 +739,7 @@ export default function MemberPage() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm mt-1">
-                        <span className="text-gray-400">{formatCurrency(emi.amount)} (ब्याज: {formatCurrency(emi.interestComponent)})</span>
+                        <span className="text-gray-400">{formatCurrency(emi.amount)} ({t('interestLabel')}: {formatCurrency(emi.interestComponent)})</span>
                       </div>
                       <div className="flex justify-between text-xs mt-1 text-gray-400">
                         <span>{t('dueDate')}: {formatDate(emi.dueDate)}</span>

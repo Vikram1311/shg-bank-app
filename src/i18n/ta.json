@@ -187,5 +187,15 @@
   "enterPassword": "கடவுச்சொல்லை உள்ளிடவும்",
   "enterBothFields": "மொபைல் எண் மற்றும் கடவுச்சொல்லை உள்ளிடவும்",
   "wrongCredentials": "தவறான மொபைல் எண் அல்லது கடவுச்சொல்",
-  "shgTagline": "சுய உதவிக் குழு வங்கி"
+  "shgTagline": "சுய உதவிக் குழு வங்கி",
+  "currentPasswordWrong": "தற்போதைய கடவுச்சொல் தவறானது",
+  "passwordMinLength": "கடவுச்சொல் குறைந்தபட்சம் 4 எழுத்துகள் இருக்க வேண்டும்",
+  "passwordMismatch": "கடவுச்சொற்கள் பொருந்தவில்லை",
+  "passwordChanged": "கடவுச்சொல் மாற்றப்பட்டது!",
+  "upiPaymentInstruction": "UPI QR குறியீடு மூலம் செலுத்தவும். நிர்வாகி சரிபார்த்த பிறகு பங்களிப்பு தெரியும்.",
+  "interestLabel": "வட்டி",
+  "balanceLabel": "இருப்பு",
+  "enterCurrentPassword": "தற்போதைய கடவுச்சொல்",
+  "enterNewPassword": "புதிய கடவுச்சொல்",
+  "confirmPasswordPlaceholder": "கடவுச்சொல் உறுதிப்படுத்து"
 }

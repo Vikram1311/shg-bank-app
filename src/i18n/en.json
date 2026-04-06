@@ -187,5 +187,15 @@
   "enterPassword": "Enter password",
   "enterBothFields": "Please enter mobile number and password",
   "wrongCredentials": "Wrong mobile number or password",
-  "shgTagline": "Self Help Group Bank"
+  "shgTagline": "Self Help Group Bank",
+  "currentPasswordWrong": "Current password is wrong",
+  "passwordMinLength": "Password must be at least 4 characters",
+  "passwordMismatch": "Passwords do not match",
+  "passwordChanged": "Password changed!",
+  "upiPaymentInstruction": "Please pay via UPI QR code. Contribution will be visible after admin verification.",
+  "interestLabel": "Interest",
+  "balanceLabel": "Balance",
+  "enterCurrentPassword": "Current password",
+  "enterNewPassword": "New password",
+  "confirmPasswordPlaceholder": "Confirm password"
 }
