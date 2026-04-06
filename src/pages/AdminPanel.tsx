@@ -95,6 +95,9 @@ export default function AdminPanel() {
   const [editLoanClosing, setEditLoanClosing] = useState('');
   const [editLoanStatus, setEditLoanStatus] = useState<'active' | 'completed' | 'foreclosed'>('active');
 
+  // Foreclosure modal state
+  const [showForeclosureModal, setShowForeclosureModal] = useState<string | null>(null);
+
   const activeMembers = store.members.filter(m => m.isActive);
   const nonAdminMembers = activeMembers.filter(m => !m.isAdmin);
   const totalCollection = store.getTotalCollection();
@@ -534,7 +537,7 @@ export default function AdminPanel() {
                       <button onClick={() => store.rejectLoan(loan.id)} className={`${btnD} px-3 py-1.5 text-xs`}><XCircle className="w-3 h-3 inline mr-1" /> {t('reject')}</button>
                     </>)}
                     {loan.status === 'active' && (
-                      <button onClick={() => { if (confirm(t('confirmForecloseLoan'))) store.forecloseLoan(loan.id); }} className={`${btnW} px-3 py-1.5 text-xs`}>{t('forecloseLoan')}</button>
+                      <button onClick={() => setShowForeclosureModal(loan.id)} className={`${btnW} px-3 py-1.5 text-xs`}>{t('forecloseLoan')}</button>
                     )}
                     <button onClick={() => setShowEMIDetail(loan.id)} className="bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg text-xs hover:bg-blue-500/30"><Eye className="w-3 h-3 inline mr-1" /> EMI</button>
                     <button onClick={() => handleEditLoanOpen(loan.id)} className="bg-blue-500/20 text-blue-400 p-1.5 rounded-lg hover:bg-blue-500/30"><Edit3 className="w-3 h-3" /></button>
@@ -905,6 +908,49 @@ export default function AdminPanel() {
           </div>
         </Modal>
       )}
+      {showForeclosureModal && (() => {
+        const summary = store.getForeclosureSummary(showForeclosureModal);
+        const loan = store.loans.find(l => l.id === showForeclosureModal);
+        if (!summary || !loan) return null;
+        return (
+          <Modal title={`⚠️ ${t('forecloseLoan')}`} onClose={() => setShowForeclosureModal(null)}>
+            <div className="space-y-4">
+              <p className="text-gray-300 text-sm">{t('confirmForecloseLoan')}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">{t('loanAmount')}</p>
+                  <p className="text-white font-bold">{formatCurrency(summary.loanAmount)}</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">{t('interestRate')}</p>
+                  <p className="text-white font-bold">{summary.interestRate}%</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">{t('daysActive')}</p>
+                  <p className="text-blue-400 font-bold">{summary.daysActive} {t('days')}</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">EMI {t('paid')}</p>
+                  <p className="text-emerald-400 font-bold">{summary.paidEmis}/{summary.totalEmis}</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">{t('pendingInterest')}</p>
+                  <p className="text-yellow-400 font-bold">{formatCurrency(summary.pendingInterest)}</p>
+                </div>
+                <div className="bg-white/5 rounded-lg p-3 text-center">
+                  <p className="text-gray-400 text-xs">{t('totalSettlement')}</p>
+                  <p className="text-red-400 font-bold">{formatCurrency(summary.totalSettlement)}</p>
+                </div>
+              </div>
+              <p className="text-amber-400 text-xs text-center">⚠️ {t('foreclosureWarning')}</p>
+              <div className="flex gap-2">
+                <button onClick={() => { store.forecloseLoan(showForeclosureModal); setShowForeclosureModal(null); }} className={`${btnD} flex-1 py-3`}>{t('confirmForeclosure')}</button>
+                <button onClick={() => setShowForeclosureModal(null)} className="bg-white/10 text-gray-300 px-6 py-3 rounded-xl hover:bg-white/20">{t('cancel')}</button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }

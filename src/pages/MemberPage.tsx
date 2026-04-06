@@ -399,7 +399,7 @@ export default function MemberPage() {
                   {myContributions.map(c => (
                     <div key={c.id} className="flex justify-between items-center bg-white/5 rounded-lg p-2">
                       <div>
-                        <p className="text-white text-sm">{c.month}</p>
+                        <p className="text-white text-sm">{c.month} {c.type === 'interest' && <span className="ml-1 text-xs bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">{t('interestEntry')}</span>}</p>
                         {c.paidDate && <p className="text-gray-400 text-xs">{formatDate(c.paidDate)}</p>}
                         {c.penalty > 0 && <p className="text-red-400 text-xs">+{formatCurrency(c.penalty)} {t('penalty')}</p>}
                       </div>
