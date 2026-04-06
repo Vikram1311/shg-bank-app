@@ -14,7 +14,7 @@ export default function LoginPage() {
 
   const handleLogin = () => {
     if (!mobile || !password) {
-      setError(t('enterMobileAndPassword'));
+      setError(t('enterBothFields'));
       return;
     }
     const member = login(mobile, password);
@@ -40,7 +40,7 @@ export default function LoginPage() {
             <Banknote className="w-12 h-12 text-white" />
           </div>
           <h1 className="text-4xl font-extrabold text-white tracking-tight">SHG BANK</h1>
-          <p className="text-purple-200 mt-2 text-lg">{t('shgBankSubtitle')}</p>
+          <p className="text-purple-200 mt-2 text-lg">{t('shgTagline')}</p>
         </div>
 
         {/* Login Card */}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { useTranslation } from 'react-i18next';
 import { QRCodeSVG } from 'qrcode.react';
@@ -7,7 +7,8 @@ import { calculateLoanDetails } from '../utils/calculations';
 import {
   Users, IndianRupee, TrendingUp, Wallet, LogOut, Plus, Trash2, Edit3, Download,
   Send, Settings, Eye, CheckCircle, XCircle, Banknote,
-  AlertTriangle, CreditCard, FileText, Bell, UserPlus, Share2, ExternalLink
+  AlertTriangle, CreditCard, FileText, Bell, UserPlus, Share2, ExternalLink,
+  Cloud, CloudOff, RefreshCw
 } from 'lucide-react';
 
 type AdminTab = 'dashboard' | 'members' | 'loans' | 'contributions' | 'messages' | 'settings';
@@ -101,6 +102,32 @@ export default function AdminPanel() {
   const nonAdminMembers = activeMembers.filter(m => !m.isAdmin);
   const totalCollection = store.getTotalCollection();
   const totalLoansGiven = store.getTotalLoansGiven();
+
+  // Auto-push to cloud when data changes (admin only)
+  const pushStateToCloud = store.pushStateToCloud;
+  const cloudSyncEnabled = store.cloudSyncEnabled;
+  const members = store.members;
+  const loans = store.loans;
+  const contributions = store.contributions;
+  const penalties = store.penalties;
+  const notifications = store.notifications;
+  const settings = store.settings;
+
+  const isFirstRender = useRef(true);
+  const pushTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!cloudSyncEnabled) return;
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(() => {
+      pushStateToCloud();
+    }, 2000);
+    return () => clearTimeout(pushTimer.current);
+  }, [members, loans, contributions, penalties, notifications, settings, cloudSyncEnabled, pushStateToCloud]);
   const remainingBalance = store.getRemainingBalance();
   const totalPenalty = store.getTotalPenaltyCollected();
   const totalInterest = store.getTotalInterestCollected();
@@ -266,6 +293,27 @@ export default function AdminPanel() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {store.cloudSyncEnabled && (
+                <button
+                  onClick={() => store.pushStateToCloud()}
+                  disabled={store.isSyncing}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    store.syncError
+                      ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      : store.isSyncing
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+                  }`}
+                  title={t('syncData')}
+                >
+                  {store.syncError ? (
+                    <CloudOff className="w-3.5 h-3.5" />
+                  ) : (
+                    <Cloud className={`w-3.5 h-3.5`} />
+                  )}
+                  <RefreshCw className={`w-3 h-3 ${store.isSyncing ? 'animate-spin' : ''}`} />
+                </button>
+              )}
               <select value={i18n.language} onChange={(e) => i18n.changeLanguage(e.target.value)} className="bg-white/10 border border-white/20 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none">
                 <option value="hi">हिंदी</option>
                 <option value="en">English</option>
