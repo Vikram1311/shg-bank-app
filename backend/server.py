@@ -153,6 +153,7 @@ class UpdateMemberInput(BaseModel):
     profilePhoto: Optional[str] = None
     isActive: Optional[bool] = None
     autoDeductPenalty: Optional[bool] = None
+    joiningDate: Optional[str] = None
 
 
 class AddMemberInput(BaseModel):
@@ -173,6 +174,14 @@ class EMIPayInput(BaseModel):
     emiNumber: int
     paidDate: str
     applyPenalty: bool = True
+    flexibleAmount: Optional[float] = None  # If provided, overrides EMI amount
+
+
+class EMIEditInput(BaseModel):
+    amount: Optional[float] = None
+    paidDate: Optional[str] = None
+    penalty: Optional[float] = None
+    status: Optional[Literal["pending", "paid"]] = None
 
 
 class ContributionInput(BaseModel):
@@ -668,10 +677,13 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
         days_late = calculate_penalty_days(target_emi["dueDate"])
         if days_late > 0:
             penalty = days_late * fee
+    # Allow custom flexible payment amount
+    actual_amount = input.flexibleAmount if input.flexibleAmount and input.flexibleAmount > 0 else target_emi["amount"]
     target_emi["status"] = "paid"
     target_emi["paidDate"] = input.paidDate
     target_emi["penalty"] = penalty
-    new_remaining = max(0, loan["remainingAmount"] - target_emi["amount"])
+    target_emi["amount"] = actual_amount  # Store actual paid amount
+    new_remaining = max(0, loan["remainingAmount"] - actual_amount)
     all_paid = all(e["status"] == "paid" for e in emi_history)
     new_status = "completed" if all_paid else loan["status"]
     await db.loans.update_one({"id": input.loanId}, {"$set": {
@@ -683,7 +695,37 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
         p = PenaltyRecord(memberId=loan["memberId"], type="emi", referenceId=target_emi["id"],
                           amount=penalty, date=input.paidDate, daysLate=days_late)
         await db.penalties.insert_one(p.model_dump())
-    return {"success": True, "penalty": penalty}
+    return {"success": True, "penalty": penalty, "actualAmount": actual_amount}
+
+
+@api_router.put("/loans/{loan_id}/emi/{emi_id}")
+async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    loan = await db.loans.find_one({"id": loan_id}, {"_id": 0})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    emi_history = loan["emiHistory"]
+    target_emi = None
+    for e in emi_history:
+        if e["id"] == emi_id:
+            target_emi = e
+            break
+    if not target_emi:
+        raise HTTPException(status_code=404, detail="EMI not found")
+    update_fields = {k: v for k, v in input.model_dump().items() if v is not None}
+    target_emi.update(update_fields)
+    # Recompute remaining amount
+    paid_total = sum(e["amount"] for e in emi_history if e["status"] == "paid")
+    new_remaining = max(0, loan["totalPayable"] - paid_total)
+    all_paid = all(e["status"] == "paid" for e in emi_history)
+    new_status = "completed" if all_paid else "active"
+    await db.loans.update_one({"id": loan_id}, {"$set": {
+        "emiHistory": emi_history,
+        "remainingAmount": new_remaining,
+        "status": new_status,
+    }})
+    return {"success": True, "emi": target_emi}
 
 
 @api_router.delete("/loans/{loan_id}")
@@ -1232,6 +1274,30 @@ async def get_defaulters(user: Member = Depends(get_current_user)):
 
 
 # ==================== Notifications ====================
+
+@api_router.get("/members/{member_id}/full-detail")
+async def member_full_detail(member_id: str, user: Member = Depends(get_current_user)):
+    """Admin: complete view of one member's data"""
+    if not user.isAdmin and user.id != member_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    loans = await db.loans.find({"memberId": member_id}, {"_id": 0}).to_list(200)
+    contribs = await db.contributions.find({"memberId": member_id}, {"_id": 0}).to_list(500)
+    savings_txns = await db.savings.find({"memberId": member_id}, {"_id": 0}).to_list(500)
+    penalties = await db.penalties.find({"memberId": member_id}, {"_id": 0}).to_list(500)
+    # Loans where this member is guarantor
+    guarantor_loans = await db.loans.find({"guarantorId": member_id}, {"_id": 0}).to_list(200)
+    return {
+        "member": member,
+        "loans": loans,
+        "contributions": sorted(contribs, key=lambda c: c.get("month", ""), reverse=True),
+        "savings": sorted(savings_txns, key=lambda s: s.get("date", ""), reverse=True),
+        "penalties": penalties,
+        "guarantorLoans": guarantor_loans,
+    }
+
 
 @api_router.get("/notifications")
 async def get_notifications(user: Member = Depends(get_current_user)):

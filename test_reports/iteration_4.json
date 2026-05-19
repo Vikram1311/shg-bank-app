@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 4 backend testing of SHG BANK new features: (1) GET /api/members/{id}/full-detail (admin/self/forbidden/404/no _id leaks/guarantorLoans), (2) POST /api/loans/emi-pay with flexibleAmount (override stores actual amount and reduces remainingAmount by actual, fallback when null or 0, partial payment recompute, non-admin 403), (3) PUT /api/loans/{loan_id}/emi/{emi_id} edit (amount/paidDate/penalty/status edits, recomputes remainingAmount from sum of paid amounts, 404 on bogus emi_id, admin-only, all-paid marks loan completed), (4) PUT /api/members/{id} accepts joiningDate. Wrote 16 pytest tests in test_shg_v4_features.py - ALL 16 PASS (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/loans/emi-pay", "issue": "When flexibleAmount overrides the EMI amount, the stored emi.amount is permanently overwritten. emi.principalComponent and emi.interestComponent are NOT updated, so they no longer sum to the new amount. Mostly cosmetic but breaks any downstream principal/interest reporting."},
+      {"endpoint": "POST /api/loans/emi-pay", "issue": "remainingAmount is calculated as max(0, remaining - actual) at pay-time, but PUT /loans/{id}/emi/{eid} recomputes it as totalPayable - sum(paid). The two paths use different formulas; if EMI amounts are edited to differ from totalPayable / months, results diverge. Consider unifying to the sum-based recomputation."},
+      {"endpoint": "PUT /api/loans/{loan_id}/emi/{emi_id}", "issue": "Always sets loan.status to 'active' (or 'completed' if all paid). If the loan was 'pending' (not yet approved), editing an EMI silently flips it to 'active', bypassing the approval workflow."},
+      {"endpoint": "PUT /api/loans/{loan_id}/emi/{emi_id}", "issue": "No penalty PenaltyRecord row is created when admin sets a 'penalty' on an EMI via edit. The penalty value is stored only on the EMI, so /penalties listing and stats won't reflect it (unlike pay_emi which inserts a PenaltyRecord)."},
+      {"endpoint": "GET /api/members/{id}/full-detail", "issue": "Returns plaintext member password (and entire Member doc including isAdmin flag) to the requesting member themselves. Self can already login, but exposing the password in responses is a leak."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v4_features.py",
+    "/app/test_reports/pytest/iter4_results.xml"
+  ],
+  "action_items": [
+    "Decide whether flexibleAmount should also update principalComponent / interestComponent (suggest: keep originals immutable and add a paidAmount field instead of overwriting amount).",
+    "Unify remainingAmount calculation: both pay_emi and edit_emi should use totalPayable - sum(paid amount).",
+    "edit_emi should NOT flip a 'pending' loan to 'active' (preserve original status unless all paid).",
+    "edit_emi should create/update PenaltyRecord when 'penalty' field is set.",
+    "Strip 'password' from /full-detail member object (and from any other member-returning endpoint).",
+    "Carry-over: hash passwords, switch to JWT, server.py = 1370 lines (exceeds 700-line guideline; refactor into routers)."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 1370 lines; further past the 700-line guideline. Refactor into routers/services becoming urgent.",
+    "Inconsistent remainingAmount math between pay_emi (subtraction) and edit_emi (sum-based) - a known source of drift bugs.",
+    "Permanently overwriting EMIRecord.amount with flexibleAmount destroys the original scheduled amount and decouples it from principal+interest components.",
+    "edit_emi unconditionally sets status to 'active' or 'completed'; a pending loan becomes active without explicit approval.",
+    "Password is still plaintext in the member doc and is returned by /full-detail to the member themselves.",
+    "Token is still raw memberId UUID (carried over from prior iterations - security CRITICAL)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_shg_v4_features.py (NEW - 16 tests covering all iter4 review-request scenarios)"
+  ],
+  "success_rate": {"backend": "100% on iter4 features (16/16 pass)", "frontend": "N/A (backend-only test)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created 3 fresh loans during testing for 3 different eligible members (10000/4mo, 8000/3mo, 4000/2mo). All EMIs on the 4000/2mo loan marked paid (loan.status='completed'). Multiple EMIs paid on the other two test loans. MEENA's joiningDate momentarily changed and restored to 2025-09-10.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_shg_v4_features.py is idempotent in finding eligible members but DOES create new loans each run. After several runs, free eligible members will run out and TestFlexibleEMI/TestEditEMI may pytest.skip. To free up the pool, mark older test loans as completed via the same edit endpoint, or wipe db.loans for test members. Helper _get_unpaid_eligible_member finds any active non-admin without an active loan or active guarantor commitment.",
+  "rca of the issue": "No bugs blocking the iter4 features. All 16 tests pass on first run. Minor design concerns documented in backend_issues.minor (especially around inconsistent remainingAmount math and EMI principal/interest desync when flexibleAmount is used)."
+}

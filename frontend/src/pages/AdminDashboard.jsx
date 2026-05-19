@@ -5,7 +5,9 @@ import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import AdminSavingsTab from '../components/AdminSavingsTab';
 import OldLoanModal from '../components/OldLoanModal';
-import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock } from 'lucide-react';
+import MemberDetailModal from '../components/MemberDetailModal';
+import EMIPayModal from '../components/EMIPayModal';
+import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -188,17 +190,8 @@ function LoansTab({ loans, members, onChange }) {
   const { t, fc, fd } = useApp();
   const [filter, setFilter] = useState('all');
   const [showOldLoan, setShowOldLoan] = useState(false);
+  const [emiToPay, setEmiToPay] = useState(null); // { loan, emi }
   const filtered = filter === 'all' ? loans : loans.filter((l) => l.status === filter);
-
-  const payEMI = async (loanId, emiNumber) => {
-    try {
-      await api.post('/loans/emi-pay', {
-        loanId, emiNumber, paidDate: new Date().toISOString().slice(0, 10), applyPenalty: true,
-      });
-      toast.success(t('success'));
-      onChange();
-    } catch (e) { toast.error(e.response?.data?.detail || t('error')); }
-  };
 
   const deleteLoan = async (loanId) => {
     if (!window.confirm(t('confirm') + '?')) return;
@@ -256,7 +249,7 @@ function LoansTab({ loans, members, onChange }) {
                         <td className="p-1"><span className={`pill text-[10px] ${e.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{t(e.status)}</span></td>
                         <td className="p-1">
                           {e.status === 'pending' && (
-                            <button onClick={() => payEMI(l.id, e.emiNumber)} className="btn-3d-success text-[10px] py-1 px-2" data-testid={`pay-emi-${l.id}-${e.emiNumber}`}>
+                            <button onClick={() => setEmiToPay({ loan: l, emi: e })} className="btn-3d-success text-[10px] py-1 px-2" data-testid={`pay-emi-${l.id}-${e.emiNumber}`}>
                               {t('payEmi')}
                             </button>
                           )}
@@ -271,6 +264,7 @@ function LoansTab({ loans, members, onChange }) {
         ))
       )}
       {showOldLoan && <OldLoanModal members={members} onClose={() => setShowOldLoan(false)} onSuccess={onChange} />}
+      {emiToPay && <EMIPayModal loan={emiToPay.loan} emi={emiToPay.emi} onClose={() => setEmiToPay(null)} onSuccess={onChange} />}
     </div>
   );
 }
@@ -455,22 +449,7 @@ function EditContribModal({ contrib, onClose, onSuccess }) {
 function MembersTab({ members, onChange }) {
   const { t, fc } = useApp();
   const [showAdd, setShowAdd] = useState(false);
-
-  const remove = async (id) => {
-    if (!window.confirm('Remove this member?')) return;
-    try {
-      await api.delete(`/members/${id}`);
-      toast.success(t('success'));
-      onChange();
-    } catch { toast.error(t('error')); }
-  };
-
-  const reset = async (id) => {
-    try {
-      const r = await api.post(`/auth/reset-password/${id}`);
-      toast.success(`Password reset: ${r.data.newPassword}`);
-    } catch { toast.error(t('error')); }
-  };
+  const [detailMemberId, setDetailMemberId] = useState(null);
 
   return (
     <div className="space-y-4 animate-slide-up" data-testid="admin-members-tab">
@@ -480,6 +459,7 @@ function MembersTab({ members, onChange }) {
           <Plus className="w-4 h-4" /> {t('addMember')}
         </button>
       </div>
+      <p className="text-xs text-muted-foreground font-semibold">💡 किसी भी सदस्य के नाम पर click करें - पूरा detail देखने के लिए</p>
       <div className="card-3d overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -489,25 +469,22 @@ function MembersTab({ members, onChange }) {
                 <th className="text-left p-3 font-bold">{t('mobile')}</th>
                 <th className="text-left p-3 font-bold">{t('joiningDate')}</th>
                 <th className="text-left p-3 font-bold">{t('status')}</th>
-                <th className="text-left p-3 font-bold">{t('actions')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {members.map((m) => (
-                <tr key={m.id} className="border-t border-border/60 hover:bg-muted/20">
+                <tr key={m.id}
+                  onClick={() => setDetailMemberId(m.id)}
+                  className="border-t border-border/60 hover:bg-primary/5 cursor-pointer transition-all"
+                  data-testid={`member-row-${m.id}`}
+                >
                   <td className="p-3 font-bold">{m.name} {m.isAdmin && <span className="pill bg-violet-100 text-violet-700 text-[10px]">{t('admin')}</span>}</td>
                   <td className="p-3 font-mono">{m.mobile}</td>
                   <td className="p-3 text-xs">{m.joiningDate}</td>
                   <td className="p-3"><span className={`pill ${m.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700'}`}>{m.isActive ? t('active') : t('inactive')}</span></td>
-                  <td className="p-3 flex gap-1">
-                    <button onClick={() => reset(m.id)} className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100" data-testid={`reset-pwd-${m.id}`} title={t('resetPwd')}>
-                      <KeyRound className="w-4 h-4" />
-                    </button>
-                    {!m.isAdmin && (
-                      <button onClick={() => remove(m.id)} className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100" data-testid={`remove-member-${m.id}`}>
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                  <td className="p-3 text-primary">
+                    <ChevronRight className="w-5 h-5" />
                   </td>
                 </tr>
               ))}
@@ -516,6 +493,7 @@ function MembersTab({ members, onChange }) {
         </div>
       </div>
       {showAdd && <AddMemberModal onClose={() => setShowAdd(false)} onAdd={onChange} />}
+      {detailMemberId && <MemberDetailModal memberId={detailMemberId} onClose={() => setDetailMemberId(null)} onChange={onChange} />}
     </div>
   );
 }
