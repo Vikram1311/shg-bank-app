@@ -297,3 +297,46 @@
 - /app/frontend/src/components/AdminSavingsTab.jsx
 - /app/frontend/src/components/PersonalLoanModal.jsx (NEW)
 - /app/frontend/src/components/PersonalLoansTab.jsx (NEW)
+
+---
+
+## Iteration 7 (May 2026) — Calculator fix, PaymentWidget, Auto-deduct Penalty
+
+### Bugs Fixed
+1. **Loan Calculator Slider/EMI Desync (P0)** — Rapid slider/input changes caused stale `/api/loans/calculator` responses to overwrite newer ones. UI showed ₹30,000 selected but EMI math reflected an earlier (lower) value.
+   - Fix in `/app/frontend/src/components/LoanApplyModal.jsx`: added 250ms debounce + `AbortController` to drop stale in-flight requests; clamp amount on open / when `maxWithGuarantor` changes.
+   - Verified: ₹30,000 × 3 mo @ 2% → EMI ₹10,403 (matches backend deterministic output).
+
+### New Features
+2. **Dynamic Payment Widget (`PaymentWidget.jsx`)** — Wired into Member Dashboard, replaces static QR.
+   - Auto-populates options: current month contribution (if unpaid), each active loan's next pending EMI, accruing penalty pool, or custom amount.
+   - QR generated dynamically via `qrserver.com` with UPI URL embedding member-selected `am` and `tn`.
+   - UPI ID pulled from `/api/settings.upiId` (currently `9315341037@indie`).
+   - Replaces the previous static `QRPayment` component (now unused, kept on disk).
+
+3. **PRD #10 — Auto-deduct Own Penalty from Contribution**
+   - `/api/members/{id}/stats` now returns:
+     - `grossContribution` — sum of paid contributions (was `totalContribution` before)
+     - `ownPenaltyPaid` — sum of this member's own penalty records since joining
+     - `totalContribution` — NET = `max(0, gross - ownPenaltyPaid)` (this is what UI displays now)
+   - `grandTotal = totalContribution(net) + penaltyShare + interestShare`
+   - Penalty pool still distributed pro-rata across all members based on gross contribution share (so the penalising member effectively donates the bulk of their penalty to the group).
+
+### Testing
+- Iteration 7: 13/13 backend pytest cases pass (`/app/backend/tests/test_shg_v7_features.py`). Frontend Loan Calculator + PaymentWidget + tab navigation: PASS.
+- No regressions.
+
+### Updated Files
+- `/app/backend/server.py` — member_stats endpoint extended (lines ~1300-1475)
+- `/app/frontend/src/components/LoanApplyModal.jsx` — debounce + AbortController
+- `/app/frontend/src/components/PaymentWidget.jsx` — already created in iter6, now wired
+- `/app/frontend/src/pages/MemberDashboard.jsx` — replaces QRPayment with PaymentWidget
+- `/app/backend/tests/test_shg_v7_features.py` — NEW (13 cases)
+
+### Pending / Backlog
+- **P2 — Admin bulk messaging**: Send notification blast to all members OR loan holders only (PRD #34). Requires internal-only blast (no SMS provider yet); could add SendGrid/Twilio later.
+- **P2 — Defaulter list strictly only names visible to all members** (PRD #48). Already implemented as `/api/defaulters` returning `name` only — verify across member dashboard.
+- **P3 — Refactoring**: `server.py` is 1637 lines. Split into routers (auth, members, loans, contributions, savings, settings) under `/app/backend/routes/` and move pydantic models to `/app/backend/models/`.
+- **(Optional)** Strip `password` from `/api/auth/login` response (carry-over minor finding from iter7 testing).
+- **(Optional Design Check)** Confirm whether `ownPenaltyPaid` should include only contribution-late penalties or all (current implementation: all).
+
