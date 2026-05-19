@@ -220,3 +220,37 @@
 - Set penalty 500 → PenaltyRecord created (count +1)
 - Update to 300 → same record updated (count unchanged, amount=300)
 - Clear to 0 → record deleted (count back to baseline)
+
+---
+## Iteration 5 (Feb 19, 2026) - Notifications + Demo Cleanup + Manual Entries
+
+### New Features:
+1. **Activity Notifications**
+   - New `notify()` helper creates a Notification record
+   - All transactions now fire notifications:
+     - Contribution add → `contribution_added`
+     - EMI pay → `emi_paid` (includes flexibleAmount + penalty)
+     - Loan approve/reject → `loan_approved` / `loan_rejected`
+     - Savings deposit (admin) → `savings_credit`
+     - Savings withdraw → `savings_debit`
+     - Manual penalty add/remove → `penalty_added` / `penalty_removed`
+     - Interest distribution → `interest_credit`
+
+2. **Demo Data Cleanup**
+   - New endpoint `POST /api/admin/clear-transactions` wipes loans/contributions/savings/penalties/notifications
+   - Keeps members & settings intact
+   - "Danger Zone" section in admin Settings tab with type-to-confirm dialog
+   - Used to clean all demo/test data → fresh state
+
+3. **Manual Entry Forms in Admin Overview**
+   - New "Quick Manual Entries" card on Admin Overview
+     - **मैनुअल योगदान** modal → single member contribution entry
+     - **मैनुअल जुर्माना** modal → ad-hoc penalty for any member
+   - Backend: `POST /api/penalties`, `DELETE /api/penalties/{id}`
+   - PenaltyRecord type now accepts `manual` (in addition to contribution/emi)
+   - EMI payment & savings deposit/withdraw already in respective tabs (no duplication)
+
+### Testing
+- Iteration 5: 15/18 backend tests pass on first run; 2 misses (loan_approved/rejected notifications were silently dropped by a stale state); FIXED post-test by re-applying notify() calls in approve_loan and reject_loan handlers
+- Verified manually after fix: notification fires correctly
+- 1 skipped test (distribute-interest needs preconditions)

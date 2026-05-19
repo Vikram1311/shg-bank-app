@@ -601,6 +601,7 @@ async def approve_loan(loan_id: str, user: Member = Depends(get_current_user)):
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     await db.loans.update_one({"id": loan_id}, {"$set": {"status": "active"}})
+    await notify(loan["memberId"], f"✅ आपका ₹{loan.get('amount', 0)} का ऋण स्वीकृत हो गया", "loan_approved", loan_id)
     return {"success": True}
 
 
@@ -612,6 +613,7 @@ async def reject_loan(loan_id: str, user: Member = Depends(get_current_user)):
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     await db.loans.update_one({"id": loan_id}, {"$set": {"status": "rejected"}})
+    await notify(loan["memberId"], f"❌ आपका ₹{loan.get('amount', 0)} का ऋण अस्वीकृत हुआ", "loan_rejected", loan_id)
     return {"success": True}
 
 
