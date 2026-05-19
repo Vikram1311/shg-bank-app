@@ -166,3 +166,39 @@
 ### Testing
 - Iteration 3: 24/24 new tests passed (100%)
 - 1 v2 test now obsolete (test_balance_self) - documented in PRD
+
+---
+## Iteration 4 (Feb 19, 2026) - Member Detail View + Custom EMI + More Edits
+
+### New Features:
+1. **Member Detail Modal** - Admin clicks any member row → full-screen modal with 5 tabs:
+   - सारांश (Summary): all financial cards
+   - ऋण: complete loan list with approve/delete actions
+   - योगदान: contributions with delete
+   - बचत खाता: savings transactions with delete
+   - जुर्माना: penalty history
+   - Edit profile inline (name/mobile/joiningDate)
+   - Password reset + Member removal buttons
+   - Guarantor loans section if applicable
+
+2. **Custom EMI Amount Payment**
+   - New `EMIPayModal` - admin can enter actual paid amount (different from EMI)
+   - Backend: `flexibleAmount` field in `EMIPayInput`
+   - E.g., if EMI=₹2650 but member pays ₹3000, admin enters ₹3000
+   - Shows live diff: +₹350 अतिरिक्त (principal में जाएगा)
+   - Updates remainingAmount based on actual amount
+
+3. **More Edit/Delete Endpoints**
+   - `PUT /api/loans/{loan_id}/emi/{emi_id}` - edit EMI fields (amount, paidDate, penalty, status)
+   - `PUT /api/members/{id}` now accepts joiningDate
+   - `GET /api/members/{id}/full-detail` aggregate endpoint (admin or self)
+   - Password stripped from response (security fix)
+
+### Testing
+- Iteration 4: 16/16 backend tests passed (100%)
+- Security fix during iteration: removed password from full-detail response
+
+### Code Health
+- server.py = 1370 lines (refactor to routers recommended)
+- Token still raw memberId UUID (security todo)
+- Plaintext passwords (security todo - implement bcrypt)

@@ -1280,7 +1280,7 @@ async def member_full_detail(member_id: str, user: Member = Depends(get_current_
     """Admin: complete view of one member's data"""
     if not user.isAdmin and user.id != member_id:
         raise HTTPException(status_code=403, detail="Forbidden")
-    member = await db.members.find_one({"id": member_id}, {"_id": 0})
+    member = await db.members.find_one({"id": member_id}, {"_id": 0, "password": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     loans = await db.loans.find({"memberId": member_id}, {"_id": 0}).to_list(200)
