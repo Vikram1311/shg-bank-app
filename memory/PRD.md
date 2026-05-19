@@ -124,3 +124,45 @@
 ### Testing
 - Iteration 2: 31/31 backend tests passed (100%)
 - Critical bug fix during testing: `guarantorId`/`guarantorName` were not being persisted on new loans → fixed in apply_loan() Loan() constructor
+
+---
+## Iteration 3 (Feb 19, 2026) - Approval Flow + Notifications + Daily Penalty
+
+### New Features Implemented:
+1. **Member Savings Approval Workflow**
+   - `SavingsTransaction.status` field: pending/approved + `createdBy`: member/admin
+   - Member self-deposits → status=pending (NOT counted in balance)
+   - Admin deposits → status=approved
+   - New endpoints: `POST /api/savings/{id}/approve`, `POST /api/savings/{id}/reject`
+   - Admin sees "Pending approvals" section with one-click approve/reject buttons
+   - Member sees "लंबित" (pending) badge on their deposit + pending amount counter
+
+2. **Tamil Language Restriction**
+   - Header language switcher only shows Tamil option if `user.language === 'ta'` OR user is admin
+   - Login page only shows Hindi/English (no Tamil before login)
+   - Ravi Arumugam (seeded with language='ta') sees Tamil option
+
+3. **Daily Late-Fee Auto-Accrual**
+   - `/api/members/{id}/stats` now returns:
+     - `pendingPenalty`: total ₹ accrued daily for unpaid contributions+EMIs past 11th
+     - `pendingPenaltyItems`: breakdown {type, daysLate, amount, month/loanId}
+     - `pendingSavings`: sum of pending deposit amounts
+   - Rate: ₹10/day for contribution, ₹20/day if contribution+EMI both late same month
+   - Admin exempt (pendingPenalty=0)
+
+4. **Notifications Inbox**
+   - New `Notification` model + endpoints
+   - `GET /api/notifications` - own notifications, sorted newest first
+   - `POST /api/notifications/{id}/read`, `POST /api/notifications/read-all`
+   - Auto-created notifications:
+     - Daily penalty notification when stats fetched (deduped by date)
+     - Savings approved/rejected when admin acts
+   - Member Dashboard has new "सूचनाएं" card with unread badge, auto-refreshes every 30s
+
+5. **Member Dashboard Enhancements**
+   - Pending Penalty warning card (red gradient, animate-pulse) on overview with item breakdown
+   - 2-column layout: Notifications + Defaulters
+
+### Testing
+- Iteration 3: 24/24 new tests passed (100%)
+- 1 v2 test now obsolete (test_balance_self) - documented in PRD
