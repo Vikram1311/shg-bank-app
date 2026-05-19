@@ -1,0 +1,91 @@
+{
+  "theme": "light",
+  "archetype": "Archetype 6 (Vibrant Play) & Archetype 1 (Organic & Earthy - Indian Festive Fusion)",
+  "typography": {
+    "headings": "Outfit",
+    "body": "Nunito",
+    "notes": "Use Google Fonts 'Outfit' for all headings and 'Nunito' for body. These provide a friendly, modern, and readable look that complements Indian languages."
+  },
+  "color_palette": {
+    "css_variables": {
+      "--background": "45 100% 97%",
+      "--foreground": "240 50% 15%",
+      "--card": "0 0% 100%",
+      "--card-foreground": "240 50% 15%",
+      "--popover": "0 0% 100%",
+      "--popover-foreground": "240 50% 15%",
+      "--primary": "345 83% 55%",
+      "--primary-foreground": "0 0% 100%",
+      "--secondary": "41 100% 50%",
+      "--secondary-foreground": "240 50% 15%",
+      "--muted": "45 20% 90%",
+      "--muted-foreground": "240 10% 45%",
+      "--accent": "250 80% 60%",
+      "--accent-foreground": "0 0% 100%",
+      "--destructive": "0 84% 60%",
+      "--destructive-foreground": "0 0% 100%",
+      "--border": "45 30% 85%",
+      "--input": "45 30% 85%",
+      "--ring": "345 83% 55%",
+      "--radius": "1.5rem"
+    },
+    "descriptions": {
+      "primary": "Rani Pink / Rose - used for primary actions, buttons, important highlights.",
+      "secondary": "Marigold / Amber - used for warning, secondary highlights, floating coins/money accents.",
+      "accent": "Vibrant Violet - used for contrasting cards, active states.",
+      "background": "Soft Cream / Off-white - provides a warm, earthy base instead of clinical white."
+    }
+  },
+  "visual_style": {
+    "overall": "Colorful 3D, Tactile, Playful, and Trustworthy. Rural Indian SHG focus, meaning accessible but premium.",
+    "shadows": {
+      "soft_ambient": "shadow-[0_20px_40px_-15px_rgba(244,63,94,0.15)]",
+      "heavy_3d": "shadow-[0_8px_0_0_rgba(225,29,72,1)]"
+    },
+    "components": {
+      "buttons": "Must have 3D tactile feel. Example classes: 'bg-primary text-primary-foreground font-bold rounded-2xl shadow-[0_6px_0_0_#be123c] active:shadow-none active:translate-y-[6px] transition-all'",
+      "cards": "Neumorphic/Claymorphic with glass vibes. Example classes: 'bg-white/90 backdrop-blur-xl border border-white/40 rounded-3xl shadow-xl overflow-hidden'",
+      "inputs": "Soft inner shadow, large rounded corners. Example classes: 'rounded-xl border-2 border-border focus:border-primary focus:ring-4 focus:ring-primary/20 transition-all shadow-inner bg-white'"
+    },
+    "spacing": "Generous. Use p-6 or p-8 for cards. Use gap-6 or gap-8 between bento grid items.",
+    "icons": "Use 'lucide-react' with colorful backgrounds or thick stroke weights (2.5) to match the bold UI, alongside the provided 3D rendered icons."
+  },
+  "layout": {
+    "dashboard": "Bento-style grid. 1-col on mobile, 3-col on tablet, 4-col on desktop. Break symmetry. Use 'h-full' to ensure cards match height.",
+    "cards": "Use 'rounded-3xl' heavily to emphasize friendliness."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "3d_savings_icon",
+        "url": "https://static.prod-images.emergentagent.com/jobs/8655bbe2-fa6d-467f-bb86-8d701c6b0e3e/images/1e5e7082d6eb37614aade3340b6446bda3ab1d7032f7d3a4b5770dffdbda312d.png",
+        "description": "3D cute piggy bank with rupee symbol. Use in Savings Account overview or contribution cards."
+      },
+      {
+        "category": "3d_loan_icon",
+        "url": "https://static.prod-images.emergentagent.com/jobs/8655bbe2-fa6d-467f-bb86-8d701c6b0e3e/images/4b2ee23c70eb5b77e56a4d5c56fd126156ae09babcfad5c00dbcaca63e847d93.png",
+        "description": "3D floating stack of colorful coins and money bag. Use in Loan application/details section."
+      },
+      {
+        "category": "3d_success_icon",
+        "url": "https://static.prod-images.emergentagent.com/jobs/8655bbe2-fa6d-467f-bb86-8d701c6b0e3e/images/757d71da474478233ac346ba7520a8bffbe710ef222a11d0ac36687dedb85ff9.png",
+        "description": "3D glowing green checkmark shield. Use for successful payments, approvals, and verified statuses."
+      },
+      {
+        "category": "3d_warning_icon",
+        "url": "https://static.prod-images.emergentagent.com/jobs/8655bbe2-fa6d-467f-bb86-8d701c6b0e3e/images/193ca9662f5e8c5a7d8fa14e7287e179c6b4a45d7377249841c13f9868f05c61.png",
+        "description": "3D warning sign. Use for Defaulters list, late fee notices, and warnings."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Inject the defined CSS variables into 'src/index.css' under ':root' to override the default Shadcn colors.",
+    "Add 'Outfit' and 'Nunito' fonts via Google Fonts in index.html and apply them in tailwind config.",
+    "For buttons, replace default Shadcn button styles with the custom 3D tactile CSS classes provided.",
+    "Wrap dashboard sections in Bento-style grid containers using Tailwind grid classes.",
+    "Implement the Multi-language (Hindi, English, Tamil) feature using a simple Context provider with a dictionary.",
+    "Use colorful blurred blobs (via CSS radial-gradient) in the background of main screens to create a festive Indian vibe without relying on external images.",
+    "Place the 3D images prominently on the Dashboard, Loan pages, and success screens.",
+    "All interactive elements MUST include a 'data-testid' attribute in kebab-case."
+  ]
+}
