@@ -81,3 +81,46 @@
 - Mongo collections: `members`, `loans`, `contributions`, `penalties`, `savings`, `settings`
 - All amounts stored as numbers; currency formatted via Intl.NumberFormat on frontend
 - DateTime stored as ISO strings; ObjectIds excluded from all responses
+
+---
+## Iteration 2 (Feb 19, 2026) - Major Feature Update
+
+### New Features Implemented:
+1. **Guarantor System (₹15K+ Loans)**
+   - Member can apply for loans up to ₹30K with a guarantor
+   - GET `/api/loans/eligible-guarantors/{memberId}` returns members who can guarantee
+   - Guarantor is blocked from new loans until 75% of guaranteed loan is repaid
+   - Frontend: LoanApplyModal shows guarantor dropdown when amount > ₹15K
+   - Settings: new `maxLoanAmountWithGuarantor` field (default ₹30K)
+
+2. **Member Savings Tab**
+   - New "बचत खाता" tab on member dashboard with hero balance card
+   - Members can self-deposit via POST `/api/savings/deposit` (own ID only)
+   - GET `/api/savings/balance/{memberId}` returns current balance
+   - Transaction history with deposit/withdrawal cards
+
+3. **Admin Savings Tab**
+   - All members' savings balances grid + filterable transaction table
+   - Admin deposit/withdraw modals with member selector
+   - Edit any savings transaction (amount, date, description, type)
+   - Delete any transaction
+
+4. **Interest Auto-Distribution**
+   - POST `/api/savings/distribute-interest` - admin transfers each member's earned interest share to their savings account
+   - Idempotent (description-based dedupe via "Interest auto-credit")
+   - One-click "ब्याज वितरण" button in Admin Savings tab
+
+5. **Old Loan Entry**
+   - Admin Loans tab: "Add Old Loan" button opens modal
+   - Toggle Running/Closed status
+   - Configurable months, opening date, closing date, interest rate
+   - Option to include in app (share interest with members)
+
+6. **Edit/Delete on Admin**
+   - PUT/DELETE on contributions, loans, savings
+   - Edit buttons added to contribution rows in Contributions tab
+   - Edit modal for savings in Admin Savings tab
+
+### Testing
+- Iteration 2: 31/31 backend tests passed (100%)
+- Critical bug fix during testing: `guarantorId`/`guarantorName` were not being persisted on new loans → fixed in apply_loan() Loan() constructor
