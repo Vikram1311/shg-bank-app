@@ -1,0 +1,41 @@
+{
+  "summary": "Iter5 backend testing of SHG BANK notification system + admin clear-transactions + manual penalty endpoints. Wrote 18 pytest tests in test_shg_v5_notifications.py: 15 PASS, 2 FAIL, 1 SKIP. Both failures are the SAME root cause: POST /api/loans/{id}/approve and POST /api/loans/{id}/reject do NOT fire notifications, contrary to the review-request specification. The skipped test (distribute-interest) requires pre-existing contributions+loans which were cleared by clear-transactions; not a bug.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/loans/{loan_id}/approve", "issue": "Does NOT call notify(). Review request explicitly requires firing a notification of type='loan_approved' with referenceId=loan_id for the borrower. Currently only updates loan.status='active' and returns. server.py lines 596-604.", "priority": "HIGH"},
+      {"endpoint": "POST /api/loans/{loan_id}/reject", "issue": "Does NOT call notify(). Review request explicitly requires firing a notification of type='loan_rejected' with referenceId=loan_id for the borrower. Currently only updates loan.status='rejected' and returns. server.py lines 607-615.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/notifications", "issue": "Ignores ?memberId= query param - always returns notifications for the authenticated user only. If admin UI is intended to view another member's notification feed there is no endpoint for it. Not a regression; documenting only."},
+      {"endpoint": "POST /api/penalties", "issue": "Pydantic validates PenaltyRecord.type Literal['contribution','emi','manual'] correctly, but the input.type sanitisation in add_manual_penalty falls back to 'manual' for any non-(contribution|emi) value. Sending arbitrary garbage like type='foo' silently becomes 'manual'. Consider validating ManualPenaltyInput.type with a Literal as well."},
+      {"endpoint": "POST /api/savings/distribute-interest", "issue": "When a member's interest share rounds to 0 (e.g., a member with zero personal contributions when share_contrib uses member_total for non-admins), no notification is sent — expected. But once contributions exist, all eligible members should receive interest_credit. Could not validate end-to-end on a freshly cleared DB."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v5_notifications.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "action_items": [
+    "Add notify(loan['memberId'], '✅ आपका ₹{amount} का लोन स्वीकृत हुआ', 'loan_approved', loan_id) inside approve_loan after the status update (server.py ~line 603).",
+    "Add notify(loan['memberId'], '❌ आपका लोन अस्वीकृत हुआ', 'loan_rejected', loan_id) inside reject_loan after the status update (server.py ~line 614).",
+    "Optionally tighten ManualPenaltyInput.type to a Literal to reject unknown values explicitly rather than silently coercing to 'manual'.",
+    "Carry-over from iter4: server.py is now 1500 lines (over 700-line guideline). Refactor into routers/services. Hash passwords. Switch to JWT (token is still raw memberId UUID)."
+  ],
+  "critical_code_review_comments": [
+    "approve_loan / reject_loan are inconsistent with every other state-changing endpoint in this iteration — all of which call notify(). This is a clear miss vs. the review-request spec.",
+    "server.py grew to 1500 lines; please split into routers (auth, members, loans, contributions, savings, penalties, notifications, admin).",
+    "Token is still raw memberId UUID over Bearer header (no expiry, no signature) — security CRITICAL carry-over.",
+    "Plaintext passwords stored on the Member doc and returned by /full-detail (iter4 carry-over)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_shg_v5_notifications.py (NEW - 18 tests covering all iter5 review-request scenarios)"
+  ],
+  "success_rate": {"backend": "83% (15/18 passed, 2 failed, 1 skipped). 100% of reproducible features except the 2 missing notify() calls.", "frontend": "N/A (backend-only test)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Per-test inline seeding. TestClearTransactions wipes ALL loans/contribs/savings/penalties/notifications at the end (last test). Members and settings remain intact. After this run the DB is again empty of transactional data — same starting state as before the run.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_shg_v5_notifications.py is self-contained and idempotent (clear-transactions runs LAST). To re-run after the approve/reject notify fix: simply pytest backend/tests/test_shg_v5_notifications.py -v. Note the test creates loan applications via member tokens (NISHA/MEENA) using guarantors picked from /api/loans/eligible-guarantors. If guarantors are insufficient the loan-apply tests will skip rather than fail. distribute-interest test will skip on a freshly cleared DB; seed at least one contribution and one approved loan first to fully exercise it.",
+  "rca of the issue": "Root cause for both failures: in /app/backend/server.py the handlers approve_loan (lines 596-604) and reject_loan (lines 607-615) update the loan.status via $set and return {success: True} but never invoke the notify() helper. Every other state-changing handler in this iteration (pay_emi, add_contribution, add_manual_penalty, delete_penalty, savings_deposit-admin, savings_withdraw, distribute_interest) correctly calls notify(member_id, message, type, ref_id). The fix is a one-liner per handler. Reproduction: (1) login as admin and as a member, (2) member POSTs /api/loans/apply, (3) admin POSTs /api/loans/{id}/approve (or /reject), (4) GET /api/notifications as that member — no entry with type='loan_approved' (or 'loan_rejected') is present even though the loan status correctly flipped to 'active' (or 'rejected'). Mitigation: add notify() call inside both handlers immediately after the db.loans.update_one(...)."
+}

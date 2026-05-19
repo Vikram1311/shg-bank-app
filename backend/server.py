@@ -91,7 +91,7 @@ class PenaltyRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     memberId: str
-    type: Literal["contribution", "emi"]
+    type: Literal["contribution", "emi", "manual"]
     referenceId: str
     amount: float
     date: str
@@ -246,6 +246,15 @@ class LoanUpdate(BaseModel):
     closingDate: Optional[str] = None
 
 
+class ManualPenaltyInput(BaseModel):
+    memberId: str
+    type: str = "manual"  # manual | contribution | emi
+    amount: float
+    daysLate: int = 0
+    date: str
+    description: str = ""
+
+
 # ==================== Calculations ====================
 
 def calculate_emi(principal: float, monthly_rate: float, months: int) -> float:
@@ -314,6 +323,18 @@ async def is_member_blocked_as_guarantor(member_id: str) -> bool:
         if (paid_amount / total) < 0.75:
             return True
     return False
+
+
+async def notify(member_id: str, message: str, notif_type: str = "general", ref_id: Optional[str] = None) -> None:
+    """Create a notification for a member."""
+    n = Notification(
+        memberId=member_id,
+        message=message,
+        type=notif_type,
+        date=datetime.now().isoformat(),
+        referenceId=ref_id,
+    )
+    await db.notifications.insert_one(n.model_dump())
 
 
 # ==================== Auth Helper ====================
@@ -695,6 +716,11 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
         p = PenaltyRecord(memberId=loan["memberId"], type="emi", referenceId=target_emi["id"],
                           amount=penalty, date=input.paidDate, daysLate=days_late)
         await db.penalties.insert_one(p.model_dump())
+    # Notify member
+    msg = f"💰 आपका EMI #{input.emiNumber} ₹{actual_amount} जमा हुआ"
+    if penalty > 0:
+        msg += f" (₹{penalty} जुर्माना सहित)"
+    await notify(loan["memberId"], msg, "emi_paid", input.loanId)
     return {"success": True, "penalty": penalty, "actualAmount": actual_amount}
 
 
@@ -817,6 +843,11 @@ async def add_contribution(input: ContributionInput, user: Member = Depends(get_
         p = PenaltyRecord(memberId=input.memberId, type="contribution", referenceId=contribution.id,
                           amount=penalty, date=input.paidDate, daysLate=days_late)
         await db.penalties.insert_one(p.model_dump())
+    # Notify
+    msg = f"✅ आपका {input.month} का योगदान ₹{settings_doc['monthlyContribution']} जमा हुआ"
+    if penalty > 0:
+        msg += f" (₹{penalty} जुर्माना सहित)"
+    await notify(input.memberId, msg, "contribution_added", contribution.id)
     return contribution
 
 
@@ -860,6 +891,39 @@ async def edit_contribution(contrib_id: str, input: ContributionUpdate, user: Me
 async def get_penalties(user: Member = Depends(get_current_user)):
     pens = await db.penalties.find({}, {"_id": 0}).to_list(2000)
     return [PenaltyRecord(**p) for p in pens]
+
+
+@api_router.post("/penalties")
+async def add_manual_penalty(input: ManualPenaltyInput, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    p = PenaltyRecord(
+        memberId=input.memberId,
+        type=input.type if input.type in ("contribution", "emi") else "manual",
+        referenceId=str(uuid.uuid4()),
+        amount=input.amount,
+        date=input.date,
+        daysLate=input.daysLate,
+    )
+    await db.penalties.insert_one(p.model_dump())
+    desc = f" ({input.description})" if input.description else ""
+    await notify(input.memberId, f"⚠️ आप पर ₹{input.amount} का जुर्माना लगाया गया{desc}", "penalty_added", p.id)
+    return p
+
+
+@api_router.delete("/penalties/{penalty_id}")
+async def delete_penalty(penalty_id: str, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    pen = await db.penalties.find_one({"id": penalty_id}, {"_id": 0})
+    if not pen:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.penalties.delete_one({"id": penalty_id})
+    await notify(pen["memberId"], f"✅ आप पर लगाया गया ₹{pen['amount']} का जुर्माना हटाया गया", "penalty_removed", penalty_id)
+    return {"success": True}
 
 
 @api_router.get("/savings")
@@ -906,6 +970,8 @@ async def savings_deposit(input: SavingsInput, user: Member = Depends(get_curren
         createdBy="member" if is_self else "admin",
     )
     await db.savings.insert_one(txn.model_dump())
+    if not is_self:
+        await notify(input.memberId, f"💚 आपके बचत खाते में ₹{input.amount} जमा हुआ", "savings_credit", txn.id)
     return txn
 
 
@@ -964,6 +1030,7 @@ async def savings_withdraw(input: SavingsInput, user: Member = Depends(get_curre
                              amount=input.amount, date=input.date, description=input.description,
                              status="approved", createdBy="admin")
     await db.savings.insert_one(txn.model_dump())
+    await notify(input.memberId, f"🔴 आपके बचत खाते से ₹{input.amount} निकाला गया", "savings_debit", txn.id)
     return txn
 
 
@@ -1028,6 +1095,7 @@ async def distribute_interest_to_savings(user: Member = Depends(get_current_user
             )
             await db.savings.insert_one(txn.model_dump())
             transferred.append({"memberId": m["id"], "name": m["name"], "amount": to_credit})
+            await notify(m["id"], f"✨ ब्याज ₹{to_credit} आपके बचत खाते में जमा हुआ", "interest_credit", txn.id)
     return {"transferred": transferred, "totalMembers": len(transferred)}
 
 
@@ -1379,6 +1447,34 @@ async def csv_all(user: Member = Depends(get_current_user)):
 
 
 # ==================== Health ====================
+
+@api_router.post("/admin/clear-transactions")
+async def clear_transactions(user: Member = Depends(get_current_user)):
+    """Admin: Wipe all transactional data (loans, contributions, savings, penalties, notifications).
+    Keeps members and settings intact."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    loans_count = await db.loans.count_documents({})
+    contribs_count = await db.contributions.count_documents({})
+    savings_count = await db.savings.count_documents({})
+    penalties_count = await db.penalties.count_documents({})
+    notifs_count = await db.notifications.count_documents({})
+    await db.loans.delete_many({})
+    await db.contributions.delete_many({})
+    await db.savings.delete_many({})
+    await db.penalties.delete_many({})
+    await db.notifications.delete_many({})
+    return {
+        "success": True,
+        "deleted": {
+            "loans": loans_count,
+            "contributions": contribs_count,
+            "savings": savings_count,
+            "penalties": penalties_count,
+            "notifications": notifs_count,
+        },
+    }
+
 
 @api_router.get("/")
 async def root():

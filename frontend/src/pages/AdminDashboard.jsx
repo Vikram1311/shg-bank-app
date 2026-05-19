@@ -7,7 +7,8 @@ import AdminSavingsTab from '../components/AdminSavingsTab';
 import OldLoanModal from '../components/OldLoanModal';
 import MemberDetailModal from '../components/MemberDetailModal';
 import EMIPayModal from '../components/EMIPayModal';
-import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight } from 'lucide-react';
+import QuickActionsCard from '../components/QuickActions';
+import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight, Trash } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -103,15 +104,18 @@ export default function AdminDashboard() {
               <StatCard icon={Users} label={t('members')} value={members.length} accent="primary" testId="admin-stat-members" />
             </div>
 
-            {/* CSV Export */}
-            <div className="card-3d p-6 flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h3 className="font-heading font-black text-xl">{t('csvExport')}</h3>
-                <p className="text-sm text-muted-foreground">{t('appName')} - Full Data Report</p>
+            {/* CSV Export + Quick Actions */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <QuickActionsCard members={members} onChange={loadAll} />
+              <div className="card-3d p-6 flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h3 className="font-heading font-black text-xl">{t('csvExport')}</h3>
+                  <p className="text-sm text-muted-foreground">{t('appName')} - Full Data Report</p>
+                </div>
+                <button onClick={downloadCSV} className="btn-3d-success flex items-center gap-2" data-testid="csv-download-btn">
+                  <Download className="w-5 h-5" /> {t('download')}
+                </button>
               </div>
-              <button onClick={downloadCSV} className="btn-3d-success flex items-center gap-2" data-testid="csv-download-btn">
-                <Download className="w-5 h-5" /> {t('download')}
-              </button>
             </div>
 
             {/* Pending Loans */}
@@ -539,6 +543,7 @@ function SettingsTab({ settings, onUpdate }) {
   const { t } = useApp();
   const [form, setForm] = useState(settings || {});
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => { if (settings) setForm(settings); }, [settings]);
 
@@ -552,18 +557,51 @@ function SettingsTab({ settings, onUpdate }) {
     finally { setLoading(false); }
   };
 
+  const clearAll = async () => {
+    const confirmText = 'CLEAR';
+    const input = window.prompt(`⚠️ चेतावनी: यह सभी loans, contributions, savings, penalties और notifications को permanently delete कर देगा (सदस्य और settings बचेंगे)।\n\nजारी रखने के लिए "${confirmText}" type करें:`);
+    if (input !== confirmText) {
+      toast.info('रद्द किया गया');
+      return;
+    }
+    setClearing(true);
+    try {
+      const r = await api.post('/admin/clear-transactions');
+      const d = r.data.deleted;
+      toast.success(`Cleared: ${d.loans} loans, ${d.contributions} contribs, ${d.savings} savings, ${d.penalties} penalties, ${d.notifications} notifs`);
+      window.location.reload();
+    } catch { toast.error(t('error')); }
+    finally { setClearing(false); }
+  };
+
   if (!settings) return <div>{t('loading')}</div>;
 
   return (
-    <div className="card-3d p-6 max-w-2xl animate-slide-up" data-testid="admin-settings-tab">
-      <h2 className="font-heading font-black text-2xl mb-4">{t('settings')}</h2>
-      <div className="space-y-4">
-        <Field label={t('upiId')} value={form.upiId} onChange={(v) => setForm({ ...form, upiId: v })} testId="settings-upi" />
-        <Field label={t('monthlyContribution')} type="number" value={form.monthlyContribution} onChange={(v) => setForm({ ...form, monthlyContribution: Number(v) })} testId="settings-monthly" />
-        <Field label={t('maxLoan')} type="number" value={form.maxLoanAmount} onChange={(v) => setForm({ ...form, maxLoanAmount: Number(v) })} testId="settings-maxloan" />
-        <Field label={t('interestRate') + ' (%)'} type="number" value={form.interestRate} onChange={(v) => setForm({ ...form, interestRate: Number(v) })} testId="settings-rate" />
-        <Field label={t('lateFee')} type="number" value={form.lateFeePerDay} onChange={(v) => setForm({ ...form, lateFeePerDay: Number(v) })} testId="settings-fee" />
-        <button onClick={save} disabled={loading} className="btn-3d-primary" data-testid="settings-save-btn">{loading ? t('loading') : t('saveSettings')}</button>
+    <div className="space-y-4 animate-slide-up" data-testid="admin-settings-tab">
+      <div className="card-3d p-6 max-w-2xl">
+        <h2 className="font-heading font-black text-2xl mb-4">{t('settings')}</h2>
+        <div className="space-y-4">
+          <Field label={t('upiId')} value={form.upiId} onChange={(v) => setForm({ ...form, upiId: v })} testId="settings-upi" />
+          <Field label={t('monthlyContribution')} type="number" value={form.monthlyContribution} onChange={(v) => setForm({ ...form, monthlyContribution: Number(v) })} testId="settings-monthly" />
+          <Field label={t('maxLoan')} type="number" value={form.maxLoanAmount} onChange={(v) => setForm({ ...form, maxLoanAmount: Number(v) })} testId="settings-maxloan" />
+          <Field label="Max Loan (with Guarantor)" type="number" value={form.maxLoanAmountWithGuarantor} onChange={(v) => setForm({ ...form, maxLoanAmountWithGuarantor: Number(v) })} testId="settings-maxloan-guarantor" />
+          <Field label={t('interestRate') + ' (%)'} type="number" value={form.interestRate} onChange={(v) => setForm({ ...form, interestRate: Number(v) })} testId="settings-rate" />
+          <Field label={t('lateFee')} type="number" value={form.lateFeePerDay} onChange={(v) => setForm({ ...form, lateFeePerDay: Number(v) })} testId="settings-fee" />
+          <button onClick={save} disabled={loading} className="btn-3d-primary" data-testid="settings-save-btn">{loading ? t('loading') : t('saveSettings')}</button>
+        </div>
+      </div>
+
+      {/* Danger zone - Clear data */}
+      <div className="card-3d p-6 max-w-2xl border-2 border-red-300 bg-red-50/30">
+        <h3 className="font-heading font-black text-xl text-red-700 flex items-center gap-2">
+          <Trash className="w-6 h-6" /> Danger Zone
+        </h3>
+        <p className="text-sm text-red-800 font-bold mt-2">⚠️ सभी demo data (loans, contributions, savings, penalties, notifications) को permanently delete करें।</p>
+        <p className="text-xs text-red-700 mt-1">सदस्य और settings बचे रहेंगे।</p>
+        <button onClick={clearAll} disabled={clearing} className="btn-3d-danger mt-3 flex items-center gap-2" data-testid="clear-data-btn">
+          <Trash className="w-4 h-4" />
+          {clearing ? t('loading') : 'सभी Transaction Data Clear करें'}
+        </button>
       </div>
     </div>
   );
