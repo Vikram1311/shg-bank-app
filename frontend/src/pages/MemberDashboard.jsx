@@ -3,7 +3,7 @@ import { useApp } from '../contexts/AppContext';
 import api from '../lib/api';
 import Header from '../components/Header';
 import StatCard from '../components/StatCard';
-import QRPayment from '../components/QRPayment';
+import PaymentWidget from '../components/PaymentWidget';
 import LoanApplyModal from '../components/LoanApplyModal';
 import MemberSavingsTab from '../components/MemberSavingsTab';
 import NotificationsCard from '../components/NotificationsCard';
@@ -135,7 +135,7 @@ export default function MemberDashboard() {
 
             {/* Two-column section */}
             <div className="grid lg:grid-cols-3 gap-6">
-              <QRPayment amount={1000} label={`Contribution ${user.name}`} />
+              <PaymentWidget stats={stats} />
 
               {/* Quick actions */}
               <div className="card-3d p-6 lg:col-span-2">

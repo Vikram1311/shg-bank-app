@@ -1,0 +1,43 @@
+{
+  "summary": "Iter7 — focused review of three fixes plus regression. (1) Loan Calculator slider/EMI sync: NEW debounced useEffect + AbortController in LoanApplyModal correctly drops stale responses; UI EMI matches backend exactly. (2) PaymentWidget on Member Dashboard: rendered, options chips work, custom 1500 reflects in payment-final-amount and QR URL (am=1500), UPI 9315341037@indie shown. (3) Auto-deduct own penalty (PRD #10): /api/members/{id}/stats now exposes grossContribution, ownPenaltyPaid, and totalContribution = max(0, gross - ownPenaltyPaid) — verified for all 23 members; verified end-to-end by creating a late TEST contribution for MEENA (penalty applied) and confirming ownPenaltyPaid increased by exactly the penalty amount and totalContribution net-deduction held. Regression: admin & member login OK, tab nav OK, settings endpoint OK, calculator deterministic across 5 repeated calls.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "Response still returns the member object with plaintext `password` field (e.g. \"password\":\"1311\"). Carry-over from earlier iterations, not introduced by iter7. Recommend stripping password from serialised member."},
+      {"endpoint": "GET /api/members/{id}/stats", "issue": "ownPenaltyPaid currently sums ALL penalty records for the member (contribution-late penalties + EMI-late penalties + manual). If product intent for PRD #10 was \"only contribution penalties auto-deduct\", this would over-deduct. Behaviour is consistent and the field name is generic, so flagging as design check rather than a bug."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "LoanApplyModal (dev console only)", "issues": ["Hydration warning logged: <span> cannot be a child of <option>. Caused by Emergent dev-tooling injecting an x-component='option' span inside the guarantor <select>'s <option> elements. Does NOT affect functionality (modal renders, select works, calculator updates). Pre-existing dev-mode artifact, ignore in production build but worth noting."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v7_features.py",
+    "/app/test_reports/pytest/iter7_results.xml"
+  ],
+  "action_items": [
+    "(Optional/Carry-over) Strip `password` from member object in /api/auth/login response.",
+    "(Optional) Confirm PRD #10 intent: should ownPenaltyPaid include EMI-late and manual penalties, or only contribution-late penalties? Current impl includes all.",
+    "(Carry-over) Hash passwords, switch tokens to signed JWT, split server.py (~1637 lines) into routers/services."
+  ],
+  "critical_code_review_comments": [
+    "LoanApplyModal.jsx (lines 34-60): debounce(250ms) + AbortController correctly cancels in-flight requests on rapid amount/months changes; only the last response sets `details`. Verified: rapid 5000→15000→30000 ended on EMI 10403 (no stale value).",
+    "LoanApplyModal.jsx clamp logic (lines 21-27) only clamps on open/maxWithGuarantor change; user can still type a number below 500 in the input (range slider step=500 clamps fine), but the effect at line 39 short-circuits the API call for <500, so no broken state ever leaks to UI. Good defensive coding.",
+    "PaymentWidget.jsx: option list is derived via useMemo dependent on stats/loans/settings — clean. selected fallback to options[0] prevents undefined-deref. data-testid coverage is excellent (payment-widget, pay-option-*, custom-amount-input, payment-final-amount, payment-qr-image, payment-upi-id).",
+    "server.py member_stats (lines 1326-1333): own_penalty_paid sums every penalty doc for this memberId after joiningDate; total_contribution clamped at 0 via max(0, ...) — safe. Returned fields grossContribution and ownPenaltyPaid match review-request contract exactly.",
+    "Backend /loans/calculator is deterministic — 5 identical POSTs returned identical EMI (10403). FE race was solely a frontend ordering bug; backend was always correct as the main agent noted."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_shg_v7_features.py (NEW - 13 pytest cases covering iter7 review-request scenarios; all 13 pass)"
+  ],
+  "success_rate": {"backend": "100% (13/13 passed)", "frontend": "100% (PaymentWidget + LoanCalculator + tab nav all PASS)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685 — verified from /app/memory/test_credentials.md",
+  "seed_data_creation": "TestMemberStatsNewFields.test_penalty_applied_reduces_total_contribution adds a single TEST contribution for MEENA on month '2030-01' with paidDate '2030-02-15' (penalty applies because >30 days late) and DELETEs it in finally{}. No residual DB state. NISHA payment-widget tests are read-only (just selects custom + types 1500; nothing persists).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_shg_v7_features.py is self-contained. The penalty E2E test uses month '2030-01' to avoid conflicts with real data — if MEENA already has a contribution for that month from a previous run the test skips cleanly. Loan calculator backend response key is `emi` (verified). PaymentWidget testids: payment-widget, pay-option-contribution/emi-*/penalty/custom, custom-amount-input, payment-final-amount, payment-qr-image, payment-upi-id.",
+  "rca of the issue": "Not applicable — no bugs found. The originally-reported slider/EMI desync race was fixed by adding debounce(250ms) + AbortController in LoanApplyModal.jsx and is now race-free under rapid input changes; the PaymentWidget integration is wired correctly to settings.upiId and renders the UPI 9315341037@indie below the QR; the member_stats endpoint now correctly exposes grossContribution, ownPenaltyPaid, and a NET totalContribution and the invariant totalContribution == max(0, gross - ownPenaltyPaid) holds for every active member."
+}

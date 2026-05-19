@@ -17,6 +17,15 @@ export default function LoanApplyModal({ open, onClose, memberId, onSuccess, can
   const maxWithGuarantor = settings?.maxLoanAmountWithGuarantor || 30000;
   const needsGuarantor = Number(amount) > maxLoan;
 
+  // Clamp amount when modal opens or limits change
+  useEffect(() => {
+    if (!open) return;
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return;
+    if (n > maxWithGuarantor) setAmount(maxWithGuarantor);
+    else if (n < 500) setAmount(500);
+  }, [open, maxWithGuarantor]);
+
   useEffect(() => {
     if (!open) return;
     api.get(`/loans/eligible-guarantors/${memberId}`).then((r) => setGuarantors(r.data)).catch(() => setGuarantors([]));
@@ -24,10 +33,31 @@ export default function LoanApplyModal({ open, onClose, memberId, onSuccess, can
 
   useEffect(() => {
     if (!open || !amount || !months) return;
-    api.post('/loans/calculator', { memberId, amount: Number(amount), months: Number(months) })
-      .then(r => setDetails(r.data))
-      .catch(() => setDetails(null));
-  }, [amount, months, open, memberId]);
+    const amt = Number(amount);
+    const mo = Number(months);
+    // Skip API calls for invalid/out-of-range values
+    if (!Number.isFinite(amt) || amt < 500 || amt > maxWithGuarantor || mo < 1 || mo > 6) {
+      return;
+    }
+    // Debounce + sequence guard to avoid stale responses overwriting newer ones
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      api.post('/loans/calculator',
+        { memberId, amount: amt, months: mo },
+        { signal: controller.signal }
+      )
+        .then(r => setDetails(r.data))
+        .catch((err) => {
+          if (err.name !== 'CanceledError' && err.name !== 'AbortError') {
+            setDetails(null);
+          }
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [amount, months, open, memberId, maxWithGuarantor]);
 
   const submit = async () => {
     if (!canApply) {

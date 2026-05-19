@@ -1298,9 +1298,9 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     if not member:
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Member's contribution total
+    # Member's contribution total (gross, before own-penalty deduction)
     member_contribs = await db.contributions.find({"memberId": member_id, "status": "paid"}, {"_id": 0}).to_list(500)
-    total_contribution = sum(c["amount"] for c in member_contribs)
+    gross_contribution = sum(c["amount"] for c in member_contribs)
 
     # All non-admin active members' total contribution
     all_members = await db.members.find({"isAdmin": False, "isActive": True}, {"_id": 0}).to_list(100)
@@ -1313,7 +1313,7 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     if is_admin:
         share_contrib = total_all_contribs / len(all_members) if all_members else 0
     else:
-        share_contrib = total_contribution
+        share_contrib = gross_contribution
 
     # Only events after member's joining date
     joining = member["joiningDate"]
@@ -1322,6 +1322,15 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     rel_penalties = [p for p in penalties if p["date"][:10] >= joining[:10]]
     total_penalty = sum(p["amount"] for p in rel_penalties)
     penalty_share = round((share_contrib / total_all_contribs) * total_penalty, 2) if total_all_contribs else 0
+
+    # PRD #10: Penalty auto-deducted from member's own contribution amount.
+    # Member's own penalty records reduce their effective contribution (penalty pool
+    # is shared with the group; the member's net contribution column reflects deduction).
+    own_penalty_paid = sum(
+        p["amount"] for p in penalties
+        if p["memberId"] == member_id and p["date"][:10] >= joining[:10]
+    )
+    total_contribution = max(0, gross_contribution - own_penalty_paid)
 
     # Loans interest (loans opened after joining, excluding personal loans)
     loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
@@ -1458,6 +1467,8 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     return {
         "memberId": member_id,
         "totalContribution": round(total_contribution, 2),
+        "grossContribution": round(gross_contribution, 2),
+        "ownPenaltyPaid": round(own_penalty_paid, 2),
         "penaltyShare": penalty_share,
         "interestShare": interest_share,
         "totalEarnings": round(total_earnings, 2),
