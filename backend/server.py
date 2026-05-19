@@ -494,6 +494,9 @@ async def apply_loan(input: LoanApplyInput, user: Member = Depends(get_current_u
 async def approve_loan(loan_id: str, user: Member = Depends(get_current_user)):
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
+    loan = await db.loans.find_one({"id": loan_id}, {"_id": 0})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
     await db.loans.update_one({"id": loan_id}, {"$set": {"status": "active"}})
     return {"success": True}
 
@@ -502,6 +505,9 @@ async def approve_loan(loan_id: str, user: Member = Depends(get_current_user)):
 async def reject_loan(loan_id: str, user: Member = Depends(get_current_user)):
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
+    loan = await db.loans.find_one({"id": loan_id}, {"_id": 0})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
     await db.loans.update_one({"id": loan_id}, {"$set": {"status": "rejected"}})
     return {"success": True}
 
@@ -711,6 +717,8 @@ async def savings_deposit(input: SavingsInput, user: Member = Depends(get_curren
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
     txn = SavingsTransaction(memberId=input.memberId, memberName=member["name"], type="deposit",
                              amount=input.amount, date=input.date, description=input.description)
     await db.savings.insert_one(txn.model_dump())
@@ -722,6 +730,13 @@ async def savings_withdraw(input: SavingsInput, user: Member = Depends(get_curre
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    # Balance check
+    txns = await db.savings.find({"memberId": input.memberId}, {"_id": 0}).to_list(2000)
+    balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in txns)
+    if input.amount > balance:
+        raise HTTPException(status_code=400, detail=f"Insufficient balance (₹{balance})")
     txn = SavingsTransaction(memberId=input.memberId, memberName=member["name"], type="withdrawal",
                              amount=input.amount, date=input.date, description=input.description)
     await db.savings.insert_one(txn.model_dump())
