@@ -6,6 +6,7 @@ import StatCard from '../components/StatCard';
 import QRPayment from '../components/QRPayment';
 import LoanApplyModal from '../components/LoanApplyModal';
 import MemberSavingsTab from '../components/MemberSavingsTab';
+import NotificationsCard from '../components/NotificationsCard';
 import { Wallet, TrendingUp, Sparkles, Trophy, PiggyBank, Coins, AlertTriangle, Plus, KeyRound, Lock, X, Calendar, History, CheckCircle2, Hourglass, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -107,6 +108,31 @@ export default function MemberDashboard() {
               <StatCard icon={PiggyBank} label={t('savingsBalance')} value={fc(stats.savingsBalance)} accent="success" testId="stat-savings" />
             </div>
 
+            {/* Pending Penalty warning */}
+            {stats.pendingPenalty > 0 && (
+              <div className="card-3d p-5 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 animate-pulse" data-testid="pending-penalty-card">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-10 h-10 text-red-600 flex-shrink-0 mt-1" />
+                  <div className="flex-1">
+                    <h3 className="font-heading font-black text-xl text-red-700">⚠️ चल रहा जुर्माना</h3>
+                    <p className="text-sm font-bold text-red-800 mt-1">
+                      आज तक <span className="text-2xl font-heading font-black">{fc(stats.pendingPenalty)}</span> जुर्माना जमा हुआ है (रोज़ बढ़ रहा है)
+                    </p>
+                    {stats.pendingPenaltyItems?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {stats.pendingPenaltyItems.map((it, idx) => (
+                          <span key={idx} className="pill bg-red-100 text-red-700 text-[10px]" data-testid={`penalty-item-${idx}`}>
+                            {it.type === 'contribution' ? `${it.month} योगदान` : `EMI #${it.emiNumber}`} • {it.daysLate} दिन • {fc(it.amount)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-red-600 mt-2 font-semibold">तुरंत भुगतान करें - QR Code नीचे है</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Two-column section */}
             <div className="grid lg:grid-cols-3 gap-6">
               <QRPayment amount={1000} label={`Contribution ${user.name}`} />
@@ -142,22 +168,27 @@ export default function MemberDashboard() {
               </div>
             </div>
 
-            {/* Defaulters list */}
-            <div className="card-3d p-6">
-              <h3 className="font-heading font-black text-xl mb-4 flex items-center gap-2 text-red-600">
-                <ShieldAlert className="w-6 h-6" /> {t('defaulters')}
-              </h3>
-              {defaulters.length === 0 ? (
-                <p className="text-muted-foreground text-sm" data-testid="no-defaulters">{t('noData')}</p>
-              ) : (
-                <div className="flex flex-wrap gap-2" data-testid="defaulters-list">
-                  {defaulters.map((d, i) => (
-                    <span key={d.id} className="pill bg-red-100 text-red-800" data-testid={`defaulter-${i}`}>
-                      ⚠️ {d.name}
-                    </span>
-                  ))}
-                </div>
-              )}
+            {/* Notifications + Defaulters in 2-col */}
+            <div className="grid lg:grid-cols-2 gap-6">
+              <NotificationsCard />
+
+              {/* Defaulters list */}
+              <div className="card-3d p-6">
+                <h3 className="font-heading font-black text-xl mb-4 flex items-center gap-2 text-red-600">
+                  <ShieldAlert className="w-6 h-6" /> {t('defaulters')}
+                </h3>
+                {defaulters.length === 0 ? (
+                  <p className="text-muted-foreground text-sm" data-testid="no-defaulters">{t('noData')}</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2" data-testid="defaulters-list">
+                    {defaulters.map((d, i) => (
+                      <span key={d.id} className="pill bg-red-100 text-red-800" data-testid={`defaulter-${i}`}>
+                        ⚠️ {d.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

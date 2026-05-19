@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
-import { PiggyBank, Plus, Sparkles, Edit, Trash2, X, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { PiggyBank, Plus, Sparkles, Edit, Trash2, X, ArrowDownCircle, ArrowUpCircle, Clock, Check } from 'lucide-react';
 
 export default function AdminSavingsTab({ members }) {
   const { t, fc, fd } = useApp();
@@ -41,12 +41,31 @@ export default function AdminSavingsTab({ members }) {
     } catch { toast.error(t('error')); }
   };
 
-  // Aggregate balances
+  const approve = async (id) => {
+    try {
+      await api.post(`/savings/${id}/approve`);
+      toast.success('स्वीकृत');
+      load();
+    } catch { toast.error(t('error')); }
+  };
+
+  const reject = async (id) => {
+    if (!window.confirm('Reject this deposit?')) return;
+    try {
+      await api.post(`/savings/${id}/reject`);
+      toast.success('अस्वीकृत');
+      load();
+    } catch { toast.error(t('error')); }
+  };
+
+  // Aggregate balances - only approved
   const balances = {};
   txns.forEach((tx) => {
+    if (tx.status !== 'approved') return;
     balances[tx.memberId] = (balances[tx.memberId] || 0) + (tx.type === 'deposit' ? tx.amount : -tx.amount);
   });
   const totalSavings = Object.values(balances).reduce((a, b) => a + b, 0);
+  const pendingTxns = txns.filter((tx) => tx.status === 'pending');
 
   const filteredTxns = filterMember ? txns.filter((tx) => tx.memberId === filterMember) : txns;
 
@@ -74,6 +93,34 @@ export default function AdminSavingsTab({ members }) {
           </div>
         </div>
       </div>
+
+      {/* Pending Approvals */}
+      {pendingTxns.length > 0 && (
+        <div className="card-3d p-6 border-2 border-amber-300 bg-amber-50/50" data-testid="pending-savings-section">
+          <h3 className="font-heading font-black text-lg mb-3 text-amber-800 flex items-center gap-2">
+            <Clock className="w-5 h-5" /> लंबित approvals ({pendingTxns.length})
+          </h3>
+          <div className="space-y-2">
+            {pendingTxns.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between p-3 rounded-2xl bg-white/80 gap-2 flex-wrap" data-testid={`pending-deposit-${tx.id}`}>
+                <div>
+                  <p className="font-bold">{tx.memberName}</p>
+                  <p className="text-xs text-muted-foreground">{tx.description} • {fd(tx.date)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="font-heading font-black text-lg text-emerald-600">+{fc(tx.amount)}</p>
+                  <button onClick={() => approve(tx.id)} className="btn-3d-success py-2 px-3 text-xs" data-testid={`approve-savings-${tx.id}`}>
+                    <Check className="w-4 h-4 inline" /> Approve
+                  </button>
+                  <button onClick={() => reject(tx.id)} className="btn-3d-danger py-2 px-3 text-xs" data-testid={`reject-savings-${tx.id}`}>
+                    <X className="w-4 h-4 inline" /> Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Member balance grid */}
       <div className="card-3d p-6">
@@ -119,6 +166,11 @@ export default function AdminSavingsTab({ members }) {
                       {tx.type === 'deposit' ? <ArrowDownCircle className="w-3 h-3" /> : <ArrowUpCircle className="w-3 h-3" />}
                       {tx.type}
                     </span>
+                    {tx.status === 'pending' && (
+                      <span className="pill ml-1 bg-amber-100 text-amber-800 text-[10px]">
+                        <Clock className="w-3 h-3" /> Pending
+                      </span>
+                    )}
                   </td>
                   <td className={`p-2 font-bold ${tx.type === 'deposit' ? 'text-emerald-600' : 'text-red-500'}`}>
                     {tx.type === 'deposit' ? '+' : '-'}{fc(tx.amount)}

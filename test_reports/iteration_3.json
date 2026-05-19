@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 3 backend testing of SHG BANK new features: (1) member self-deposits require admin approval (status=pending, createdBy=member), (2) admin deposits auto-approved, (3) savings approve/reject endpoints with auto-notifications, (4) /members/{id}/stats now exposes pendingPenalty, pendingPenaltyItems, pendingSavings with daily-accruing late-fee calc and admin exemption, (5) per-day single-instance penalty notification, (6) /notifications inbox with read/read-all/404/403. Wrote 24 new pytest tests in test_shg_v3_features.py - ALL 24 PASS (100%). Regression on v2 file: 30/31 pass; the one failure (test_balance_self) is an obsolete assertion from v2 that contradicts the new spec (self-deposits no longer add to balance until approved).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/savings/{id}/approve", "issue": "Approving a non-pending (already-approved) txn is silently a no-op - returns success and triggers a savings_approved notification anyway. Consider rejecting if status != 'pending'."},
+      {"endpoint": "POST /api/savings/deposit", "issue": "Admin self-deposit (user.id == input.memberId AND user.isAdmin) goes through the 'admin' branch correctly, but the check is 'user.id != input.memberId and not user.isAdmin' - works, just slightly confusing. No business impact."},
+      {"endpoint": "GET /members/{id}/stats", "issue": "EMI penalty 'double rate' logic depends on whether the EMI's due-month contribution is paid AND not the current month - rate_per_day flips between 10 and 20. Edge case: if EMI is from the current month, it always uses base rate even if contribution is also unpaid that month. Confirm intended."},
+      {"endpoint": "GET /members/{id}/stats", "issue": "Penalty notification dedupe uses regex on date prefix YYYY-MM-DD. Will fail (create duplicate) if server timezone shifts (e.g., container restarted across midnight UTC vs local). Minor."},
+      {"endpoint": "GET /members/{id}/stats", "issue": "Daily auto-creating notifications inside a GET endpoint is a side-effect on read. Better practice would be a scheduled job. Functional but unusual."},
+      {"endpoint": "POST /api/notifications/{id}/read", "issue": "Body returns {success:true}; no echoed notification. Minor - frontend has to re-fetch list."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v3_features.py",
+    "/app/test_reports/pytest/iter3_results.xml"
+  ],
+  "action_items": [
+    "Update obsolete /app/backend/tests/test_shg_v2_features.py::TestMemberSelfSavings::test_balance_self - it asserts self-deposit lifts balance but new spec keeps it pending. Either change the test to deposit-via-admin or assert balance==0 with pendingAmount==250.",
+    "Optional: reject approve/reject of already-approved txn (currently silently re-approves and re-fires notification).",
+    "Optional: harden penalty notification dedupe to use date object instead of regex prefix.",
+    "Carry over from iter1/iter2: hash passwords, switch to JWT, server.py is now ~1303 lines (well past the 700-line guideline) - split into routers."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew from ~1127 (iter2) to ~1303 lines (iter3). 700-line guideline broken; refactor into routers (auth, members, loans, contributions, savings, notifications, settings, stats) is becoming urgent.",
+    "Side effects (notification creation) inside a GET endpoint /stats violate REST semantics. Move to a scheduled task or to write endpoints.",
+    "Notification.message is hardcoded Hindi text. Should be i18n-keyed so frontend can render in Tamil/English per language pref (relevant since the larger feature set includes Tamil-only-for-Tamil-members).",
+    "approve/reject endpoints don't validate that current status is 'pending' - admin could 'approve' an already-approved txn and create a spurious notification.",
+    "Member.password still plaintext (carried over - security CRITICAL).",
+    "Token is still raw memberId UUID (carried over - security CRITICAL).",
+    "pendingPenalty math iterates from joiningDate every call - O(months) per stats request. Cache or compute lazily for active month only."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_shg_v3_features.py (NEW - 24 tests covering all iter3 review-request scenarios)"
+  ],
+  "success_rate": {"backend": "100% on iter3 features (24/24). Regression: 30/31 on iter2 (1 stale assertion - documented in action_items).", "frontend": "N/A (backend-only test)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests left a few approved savings entries for NISHA (TEST_v3_pending becomes approved -> ₹500) and MEENA (TEST_v3_admin_dep ₹700). Rejected txn TEST_v3_to_reject was deleted. ~1 'savings_approved', 1 'savings_rejected' and possibly 1 'penalty' notification created. Carries forward state from iter2 (NISHA active loan with 3/4 EMIs paid).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_shg_v3_features.py covers all approval-workflow + notification + pendingPenalty scenarios. test_shg_v2_features.py::TestMemberSelfSavings::test_balance_self is now KNOWN-BROKEN by spec (self-deposit no longer adds to balance until approved) - either main agent or next test agent should patch that one assertion. NOTE: stats endpoint creates a 'penalty' notification on first call of the day for non-admin members with pendingPenalty>0 - this persists in DB; subsequent regression runs the same day will see the dedupe path. To force a fresh test, either change date or wipe db.notifications for the test user.",
+  "rca of the issue": "No bugs found in iter3 features. All 24 new tests pass on first run. The one v2 test failure (test_balance_self) is an intentional spec change in iter3: self-deposits now require admin approval, so balance only counts approved txns. Reproduction: REKHA self-deposits ₹250 -> status='pending' -> /savings/balance/REKHA returns balance=0, pendingAmount=250, pendingCount=1. v2 test asserted balance>=250 which contradicts the new spec. Mitigation: update v2 test to assert pendingAmount instead of balance, OR deposit via admin token."
+}

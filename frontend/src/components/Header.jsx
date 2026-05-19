@@ -1,9 +1,11 @@
 import React from 'react';
 import { useApp } from '../contexts/AppContext';
-import { LogOut, Globe } from 'lucide-react';
+import { LogOut, Globe, Bell } from 'lucide-react';
 
 export default function Header({ title, subtitle }) {
   const { user, logout, language, changeLanguage, t } = useApp();
+  // Tamil is only available for members who have language='ta' or admin (for managing Ravi's account)
+  const availableLangs = (user?.language === 'ta' || user?.isAdmin) ? ['hi', 'en', 'ta'] : ['hi', 'en'];
 
   return (
     <header className="sticky top-0 z-30 backdrop-blur-2xl bg-white/70 border-b-2 border-white/60" data-testid="app-header">
@@ -24,7 +26,7 @@ export default function Header({ title, subtitle }) {
         <div className="flex items-center gap-2">
           {/* Language switcher */}
           <div className="hidden sm:flex items-center gap-1 bg-muted/60 p-1 rounded-2xl">
-            {['hi', 'en', 'ta'].map((lang) => (
+            {availableLangs.map((lang) => (
               <button
                 key={lang}
                 data-testid={`header-lang-${lang}-btn`}
@@ -40,7 +42,8 @@ export default function Header({ title, subtitle }) {
           <button
             data-testid="mobile-lang-toggle"
             onClick={() => {
-              const next = language === 'hi' ? 'en' : language === 'en' ? 'ta' : 'hi';
+              const idx = availableLangs.indexOf(language);
+              const next = availableLangs[(idx + 1) % availableLangs.length];
               changeLanguage(next);
             }}
             className="sm:hidden p-2 rounded-xl bg-muted hover:bg-muted/70 transition-all"

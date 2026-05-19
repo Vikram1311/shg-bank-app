@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
 import api from '../lib/api';
 import { toast } from 'sonner';
-import { PiggyBank, Plus, TrendingUp, ArrowDownCircle, ArrowUpCircle, Sparkles } from 'lucide-react';
+import { PiggyBank, Plus, TrendingUp, ArrowDownCircle, ArrowUpCircle, Sparkles, Clock } from 'lucide-react';
 
 export default function MemberSavingsTab() {
   const { user, t, fc, fd } = useApp();
   const [txns, setTxns] = useState([]);
   const [balance, setBalance] = useState(0);
+  const [pendingAmount, setPendingAmount] = useState(0);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,7 @@ export default function MemberSavingsTab() {
       ]);
       setTxns(tRes.data.sort((a, b) => b.date.localeCompare(a.date)));
       setBalance(bRes.data.balance);
+      setPendingAmount(bRes.data.pendingAmount || 0);
     } catch (e) {
       console.error(e);
     }
@@ -37,7 +39,7 @@ export default function MemberSavingsTab() {
         date: new Date().toISOString().slice(0, 10),
         description: description || 'Self deposit',
       });
-      toast.success(t('success'));
+      toast.success('जमा request भेज दिया - admin approval बाकी');
       setAmount('');
       setDescription('');
       await load();
@@ -46,7 +48,7 @@ export default function MemberSavingsTab() {
     } finally { setLoading(false); }
   };
 
-  const interestEarned = txns.filter((tx) => tx.description?.startsWith('Interest auto-credit')).reduce((s, tx) => s + tx.amount, 0);
+  const interestEarned = txns.filter((tx) => tx.status === 'approved' && tx.description?.startsWith('Interest auto-credit')).reduce((s, tx) => s + tx.amount, 0);
 
   return (
     <div className="space-y-6 animate-slide-up" data-testid="member-savings-tab">
@@ -58,14 +60,21 @@ export default function MemberSavingsTab() {
           <div className="w-20 h-20 rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center float-anim">
             <PiggyBank className="w-10 h-10" />
           </div>
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-bold opacity-90">{t('mySavings')} - {t('savingsBalance')}</p>
             <p className="text-4xl sm:text-5xl font-heading font-black mt-1" data-testid="member-savings-balance">{fc(balance)}</p>
-            {interestEarned > 0 && (
-              <p className="text-sm font-semibold mt-1 opacity-90 flex items-center gap-1">
-                <Sparkles className="w-4 h-4" /> ब्याज जमा: {fc(interestEarned)}
-              </p>
-            )}
+            <div className="flex flex-wrap gap-3 mt-1">
+              {interestEarned > 0 && (
+                <p className="text-sm font-semibold opacity-90 flex items-center gap-1">
+                  <Sparkles className="w-4 h-4" /> ब्याज जमा: {fc(interestEarned)}
+                </p>
+              )}
+              {pendingAmount > 0 && (
+                <p className="text-sm font-bold bg-white/20 px-3 py-1 rounded-full flex items-center gap-1" data-testid="pending-savings-badge">
+                  <Clock className="w-4 h-4" /> लंबित: {fc(pendingAmount)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -76,6 +85,9 @@ export default function MemberSavingsTab() {
           <span className="w-2 h-7 bg-emerald-500 rounded-full" />
           <Plus className="w-5 h-5 text-emerald-600" /> बचत जमा करें
         </h3>
+        <p className="text-xs text-muted-foreground font-semibold mb-3">
+          ℹ️ जमा करने के बाद Admin approval का इंतजार करें। Approval के बाद ही balance में जुड़ेगा।
+        </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <input
             type="number"
@@ -97,7 +109,7 @@ export default function MemberSavingsTab() {
         </div>
         <button onClick={deposit} disabled={loading} className="btn-3d-success mt-4 flex items-center gap-2" data-testid="savings-deposit-btn">
           <Plus className="w-4 h-4" />
-          {loading ? t('loading') : 'जमा करें'}
+          {loading ? t('loading') : 'जमा request भेजें'}
         </button>
       </div>
 
@@ -110,24 +122,34 @@ export default function MemberSavingsTab() {
           <p className="text-muted-foreground py-6 text-center">{t('noData')}</p>
         ) : (
           <div className="space-y-2" data-testid="savings-txns-list">
-            {txns.map((tx) => (
-              <div key={tx.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 hover:bg-muted/50" data-testid={`savings-txn-${tx.id}`}>
-                <div className="flex items-center gap-3">
-                  {tx.type === 'deposit' ? (
-                    <ArrowDownCircle className="w-8 h-8 text-emerald-600" />
-                  ) : (
-                    <ArrowUpCircle className="w-8 h-8 text-red-500" />
-                  )}
-                  <div>
-                    <p className="font-bold text-sm">{tx.description || (tx.type === 'deposit' ? 'जमा' : 'निकासी')}</p>
-                    <p className="text-xs text-muted-foreground">{fd(tx.date)}</p>
+            {txns.map((tx) => {
+              const isPending = tx.status === 'pending';
+              return (
+                <div key={tx.id} className={`flex items-center justify-between p-3 rounded-2xl ${isPending ? 'bg-amber-50 border-2 border-amber-200' : 'bg-muted/30 hover:bg-muted/50'}`} data-testid={`savings-txn-${tx.id}`}>
+                  <div className="flex items-center gap-3">
+                    {tx.type === 'deposit' ? (
+                      <ArrowDownCircle className={`w-8 h-8 ${isPending ? 'text-amber-600' : 'text-emerald-600'}`} />
+                    ) : (
+                      <ArrowUpCircle className="w-8 h-8 text-red-500" />
+                    )}
+                    <div>
+                      <p className="font-bold text-sm flex items-center gap-2">
+                        {tx.description || (tx.type === 'deposit' ? 'जमा' : 'निकासी')}
+                        {isPending && (
+                          <span className="pill bg-amber-200 text-amber-900 text-[10px]">
+                            <Clock className="w-3 h-3" /> लंबित
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{fd(tx.date)}</p>
+                    </div>
                   </div>
+                  <p className={`font-heading font-black text-lg ${isPending ? 'text-amber-600' : tx.type === 'deposit' ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {tx.type === 'deposit' ? '+' : '-'}{fc(tx.amount)}
+                  </p>
                 </div>
-                <p className={`font-heading font-black text-lg ${tx.type === 'deposit' ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {tx.type === 'deposit' ? '+' : '-'}{fc(tx.amount)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

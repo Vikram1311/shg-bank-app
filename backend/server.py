@@ -107,6 +107,19 @@ class SavingsTransaction(BaseModel):
     amount: float
     date: str
     description: str = ""
+    status: Literal["pending", "approved"] = "approved"
+    createdBy: Literal["member", "admin"] = "admin"
+
+
+class Notification(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    memberId: str
+    message: str
+    type: str = "penalty"  # penalty | savings_approved | savings_rejected | loan | general
+    date: str
+    read: bool = False
+    referenceId: Optional[str] = None
 
 
 class Settings(BaseModel):
@@ -787,9 +800,12 @@ async def get_savings(memberId: Optional[str] = None, user: Member = Depends(get
 async def savings_balance(member_id: str, user: Member = Depends(get_current_user)):
     if user.id != member_id and not user.isAdmin:
         raise HTTPException(status_code=403, detail="Forbidden")
-    txns = await db.savings.find({"memberId": member_id}, {"_id": 0}).to_list(2000)
+    # Only count approved transactions
+    txns = await db.savings.find({"memberId": member_id, "status": "approved"}, {"_id": 0}).to_list(2000)
     balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in txns)
-    return {"memberId": member_id, "balance": round(balance, 2)}
+    pending = await db.savings.find({"memberId": member_id, "status": "pending"}, {"_id": 0}).to_list(2000)
+    pending_amount = sum(t["amount"] for t in pending if t["type"] == "deposit")
+    return {"memberId": member_id, "balance": round(balance, 2), "pendingAmount": round(pending_amount, 2), "pendingCount": len(pending)}
 
 
 @api_router.post("/savings/deposit")
@@ -800,10 +816,59 @@ async def savings_deposit(input: SavingsInput, user: Member = Depends(get_curren
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    txn = SavingsTransaction(memberId=input.memberId, memberName=member["name"], type="deposit",
-                             amount=input.amount, date=input.date, description=input.description)
+    # Member self-deposit → pending; admin → approved
+    is_self = user.id == input.memberId and not user.isAdmin
+    txn = SavingsTransaction(
+        memberId=input.memberId,
+        memberName=member["name"],
+        type="deposit",
+        amount=input.amount,
+        date=input.date,
+        description=input.description,
+        status="pending" if is_self else "approved",
+        createdBy="member" if is_self else "admin",
+    )
     await db.savings.insert_one(txn.model_dump())
     return txn
+
+
+@api_router.post("/savings/{txn_id}/approve")
+async def approve_savings(txn_id: str, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    txn = await db.savings.find_one({"id": txn_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    await db.savings.update_one({"id": txn_id}, {"$set": {"status": "approved"}})
+    # Create notification
+    n = Notification(
+        memberId=txn["memberId"],
+        message=f"आपकी ₹{txn['amount']} की बचत जमा स्वीकृत हो गई",
+        type="savings_approved",
+        date=datetime.now().isoformat(),
+        referenceId=txn_id,
+    )
+    await db.notifications.insert_one(n.model_dump())
+    return {"success": True}
+
+
+@api_router.post("/savings/{txn_id}/reject")
+async def reject_savings(txn_id: str, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    txn = await db.savings.find_one({"id": txn_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    await db.savings.delete_one({"id": txn_id})
+    n = Notification(
+        memberId=txn["memberId"],
+        message=f"आपकी ₹{txn['amount']} की बचत जमा अस्वीकृत हुई",
+        type="savings_rejected",
+        date=datetime.now().isoformat(),
+        referenceId=txn_id,
+    )
+    await db.notifications.insert_one(n.model_dump())
+    return {"success": True}
 
 
 @api_router.post("/savings/withdraw")
@@ -813,13 +878,14 @@ async def savings_withdraw(input: SavingsInput, user: Member = Depends(get_curre
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
-    # Balance check
-    txns = await db.savings.find({"memberId": input.memberId}, {"_id": 0}).to_list(2000)
+    # Balance check (approved only)
+    txns = await db.savings.find({"memberId": input.memberId, "status": "approved"}, {"_id": 0}).to_list(2000)
     balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in txns)
     if input.amount > balance:
         raise HTTPException(status_code=400, detail=f"Insufficient balance (₹{balance})")
     txn = SavingsTransaction(memberId=input.memberId, memberName=member["name"], type="withdrawal",
-                             amount=input.amount, date=input.date, description=input.description)
+                             amount=input.amount, date=input.date, description=input.description,
+                             status="approved", createdBy="admin")
     await db.savings.insert_one(txn.model_dump())
     return txn
 
@@ -1008,9 +1074,11 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     # Member loans
     member_loans = await db.loans.find({"memberId": member_id}, {"_id": 0}).to_list(100)
 
-    # Savings balance
-    savings = await db.savings.find({"memberId": member_id}, {"_id": 0}).to_list(500)
+    # Savings balance (approved only)
+    savings = await db.savings.find({"memberId": member_id, "status": "approved"}, {"_id": 0}).to_list(500)
     savings_balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in savings)
+    pending_savings_docs = await db.savings.find({"memberId": member_id, "status": "pending", "type": "deposit"}, {"_id": 0}).to_list(500)
+    pending_savings = sum(t["amount"] for t in pending_savings_docs)
 
     # Next due date - next unpaid contribution month
     now = datetime.now()
@@ -1019,6 +1087,85 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
 
     total_earnings = penalty_share + interest_share
     grand_total = total_contribution + total_earnings
+
+    # ====== Pending Penalty (currently accruing) ======
+    settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
+    fee_per_day = settings_doc["lateFeePerDay"]
+    pending_penalty = 0
+    pending_penalty_items = []
+
+    if not is_admin:
+        # All months from joining to current that are missing
+        join_date = datetime.strptime(member["joiningDate"][:10], "%Y-%m-%d")
+        cursor = datetime(join_date.year, join_date.month, 1)
+        while cursor <= now:
+            mkey = f"{cursor.year}-{cursor.month:02d}"
+            if mkey not in paid_months:
+                # Calculate days late after 11th of that month
+                due_day = datetime(cursor.year, cursor.month, 11, 23, 59, 59)
+                if now > due_day:
+                    days_late = math.ceil((now - due_day).total_seconds() / 86400)
+                    p = days_late * fee_per_day
+                    pending_penalty += p
+                    pending_penalty_items.append({
+                        "type": "contribution",
+                        "month": mkey,
+                        "daysLate": days_late,
+                        "amount": p,
+                    })
+            if cursor.month == 12:
+                cursor = datetime(cursor.year + 1, 1, 1)
+            else:
+                cursor = datetime(cursor.year, cursor.month + 1, 1)
+
+        # Check unpaid EMIs past due date
+        for ml in member_loans:
+            if ml["status"] not in ["active"]:
+                continue
+            for emi in ml.get("emiHistory", []):
+                if emi["status"] == "pending":
+                    due_str = emi["dueDate"][:10]
+                    try:
+                        due_dt = datetime.strptime(due_str, "%Y-%m-%d")
+                    except Exception:
+                        try:
+                            due_dt = datetime.fromisoformat(emi["dueDate"].replace("Z", "+00:00")).replace(tzinfo=None)
+                        except Exception:
+                            continue
+                    due_end = datetime(due_dt.year, due_dt.month, 11, 23, 59, 59)
+                    if now > due_end:
+                        days_late = math.ceil((now - due_end).total_seconds() / 86400)
+                        # If contribution also late same month, double penalty
+                        same_month_key = f"{due_dt.year}-{due_dt.month:02d}"
+                        rate_per_day = fee_per_day * 2 if same_month_key not in paid_months and same_month_key != current_month_key else fee_per_day
+                        p = days_late * rate_per_day
+                        pending_penalty += p
+                        pending_penalty_items.append({
+                            "type": "emi",
+                            "loanId": ml["id"],
+                            "emiNumber": emi["emiNumber"],
+                            "daysLate": days_late,
+                            "amount": p,
+                        })
+
+    pending_penalty = round(pending_penalty, 2)
+
+    # Auto-create notification once per day if pending_penalty > 0
+    if pending_penalty > 0 and not is_admin:
+        today_iso = now.date().isoformat()
+        existing = await db.notifications.find_one({
+            "memberId": member_id,
+            "type": "penalty",
+            "date": {"$regex": f"^{today_iso}"},
+        }, {"_id": 0})
+        if not existing:
+            n = Notification(
+                memberId=member_id,
+                message=f"⚠️ आज तक ₹{pending_penalty} जुर्माना जमा हुआ है। कृपया जल्द भुगतान करें।",
+                type="penalty",
+                date=now.isoformat(),
+            )
+            await db.notifications.insert_one(n.model_dump())
 
     # Can apply loan?
     can_apply = True
@@ -1046,6 +1193,9 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
         "totalEarnings": round(total_earnings, 2),
         "grandTotal": round(grand_total, 2),
         "savingsBalance": round(savings_balance, 2),
+        "pendingSavings": round(pending_savings, 2),
+        "pendingPenalty": pending_penalty,
+        "pendingPenaltyItems": pending_penalty_items,
         "currentMonth": current_month_key,
         "paidMonths": sorted(list(paid_months)),
         "canApplyLoan": can_apply,
@@ -1079,6 +1229,31 @@ async def get_defaulters(user: Member = Depends(get_current_user)):
         if is_defaulter:
             defaulters.append({"id": m["id"], "name": m["name"]})
     return defaulters
+
+
+# ==================== Notifications ====================
+
+@api_router.get("/notifications")
+async def get_notifications(user: Member = Depends(get_current_user)):
+    notifs = await db.notifications.find({"memberId": user.id}, {"_id": 0}).sort("date", -1).to_list(100)
+    return notifs
+
+
+@api_router.post("/notifications/{notif_id}/read")
+async def mark_read(notif_id: str, user: Member = Depends(get_current_user)):
+    notif = await db.notifications.find_one({"id": notif_id}, {"_id": 0})
+    if not notif:
+        raise HTTPException(status_code=404, detail="Not found")
+    if notif["memberId"] != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    await db.notifications.update_one({"id": notif_id}, {"$set": {"read": True}})
+    return {"success": True}
+
+
+@api_router.post("/notifications/read-all")
+async def mark_all_read(user: Member = Depends(get_current_user)):
+    await db.notifications.update_many({"memberId": user.id, "read": False}, {"$set": {"read": True}})
+    return {"success": True}
 
 
 # ==================== CSV Export ====================

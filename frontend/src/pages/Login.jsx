@@ -30,9 +30,9 @@ export default function Login() {
       <div className="blob bg-violet-400" style={{ width: '300px', height: '300px', bottom: '-80px', left: '20%' }} />
       <div className="blob bg-emerald-300" style={{ width: '260px', height: '260px', top: '20%', left: '40%', opacity: 0.3 }} />
 
-      {/* Language switcher */}
+      {/* Language switcher - Tamil hidden on login (only logged-in Ravi/admin sees it) */}
       <div className="absolute top-6 right-6 z-10 flex gap-2">
-        {['hi', 'en', 'ta'].map((lang) => (
+        {['hi', 'en'].map((lang) => (
           <button
             key={lang}
             data-testid={`lang-${lang}-btn`}
@@ -43,7 +43,7 @@ export default function Login() {
                 : 'bg-white/80 text-foreground'
             }`}
           >
-            {lang === 'hi' ? 'हिं' : lang === 'en' ? 'EN' : 'த'}
+            {lang === 'hi' ? 'हिं' : 'EN'}
           </button>
         ))}
       </div>
