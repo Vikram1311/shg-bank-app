@@ -69,6 +69,7 @@ class Loan(BaseModel):
     status: Literal["pending", "active", "completed", "rejected", "recalled"] = "pending"
     isOldLoan: bool = False
     includeInApp: bool = True
+    isPersonal: bool = False
     guarantorId: Optional[str] = None
     guarantorName: Optional[str] = None
     emiHistory: List[EMIRecord] = []
@@ -133,6 +134,8 @@ class Settings(BaseModel):
     interestRate: float = 2
     lateFeePerDay: float = 10
     dueDate: int = 11
+    penaltyStartDate: str = "2026-06-10"  # Pending penalty calc only counts months on/after this
+    savingsInterestRate: float = 7.25  # Annual % on savings balance
 
 
 class LoginInput(BaseModel):
@@ -216,6 +219,16 @@ class OldLoanInput(BaseModel):
     includeInApp: bool = True
 
 
+class PersonalLoanInput(BaseModel):
+    memberId: str
+    amount: float
+    months: int
+    interestRate: float = 2
+    openingDate: str
+    closingDate: Optional[str] = None
+    description: str = ""
+
+
 class SettingsUpdate(BaseModel):
     upiId: Optional[str] = None
     groupName: Optional[str] = None
@@ -224,6 +237,8 @@ class SettingsUpdate(BaseModel):
     maxLoanAmountWithGuarantor: Optional[float] = None
     interestRate: Optional[float] = None
     lateFeePerDay: Optional[float] = None
+    penaltyStartDate: Optional[str] = None
+    savingsInterestRate: Optional[float] = None
 
 
 class ContributionUpdate(BaseModel):
@@ -799,6 +814,57 @@ async def delete_loan(loan_id: str, user: Member = Depends(get_current_user)):
     return {"success": True}
 
 
+@api_router.post("/personal-loans", response_model=Loan)
+async def add_personal_loan(input: PersonalLoanInput, user: Member = Depends(get_current_user)):
+    """Personal loan - not tied to group's interest sharing."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+    rate = input.interestRate / 100
+    details = calculate_loan_details(input.amount, input.months, rate)
+    is_closed = bool(input.closingDate)
+    opening = datetime.strptime(input.openingDate[:10], "%Y-%m-%d")
+    emi_history = []
+    for i, b in enumerate(details["breakdown"]):
+        due_month = opening.month + i + 1
+        due_year = opening.year + (due_month - 1) // 12
+        due_month = ((due_month - 1) % 12) + 1
+        emi = EMIRecord(
+            emiNumber=i + 1,
+            amount=b["amount"],
+            interestComponent=b["interest"],
+            principalComponent=b["principal"],
+            dueDate=datetime(due_year, due_month, 11).isoformat(),
+            status="paid" if is_closed else "pending",
+        )
+        emi_history.append(emi)
+    next_emi_date = emi_history[0].dueDate if emi_history else opening.isoformat()
+    loan = Loan(
+        memberId=input.memberId,
+        memberName=member["name"],
+        amount=input.amount,
+        interestRate=input.interestRate,
+        months=input.months,
+        totalInterest=details["totalInterest"],
+        totalPayable=details["totalPayable"],
+        emiAmount=details["emi"],
+        remainingAmount=0 if is_closed else details["totalPayable"],
+        openingDate=input.openingDate,
+        closingDate=input.closingDate or "",
+        nextEmiDate=next_emi_date,
+        status="completed" if is_closed else "active",
+        isOldLoan=False,
+        includeInApp=False,  # personal loans don't share interest
+        isPersonal=True,
+        emiHistory=emi_history,
+    )
+    await db.loans.insert_one(loan.model_dump())
+    await notify(input.memberId, f"💼 आपके लिए ₹{input.amount} का व्यक्तिगत ऋण जोड़ा गया", "personal_loan", loan.id)
+    return loan
+
+
 # ==================== Contribution Routes ====================
 
 @api_router.get("/contributions", response_model=List[Contribution])
@@ -1101,6 +1167,44 @@ async def distribute_interest_to_savings(user: Member = Depends(get_current_user
     return {"transferred": transferred, "totalMembers": len(transferred)}
 
 
+@api_router.post("/savings/distribute-savings-interest")
+async def distribute_savings_interest(user: Member = Depends(get_current_user)):
+    """Admin: pay monthly portion of annual interest rate on each member's current savings balance."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
+    annual_rate = settings_doc.get("savingsInterestRate", 7.25)
+    monthly_rate = annual_rate / 12 / 100
+    today_iso = datetime.now().date().isoformat()
+    members = await db.members.find({"isActive": True}, {"_id": 0}).to_list(100)
+    transferred = []
+    for m in members:
+        txns = await db.savings.find({"memberId": m["id"], "status": "approved"}, {"_id": 0}).to_list(2000)
+        balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in txns)
+        if balance <= 0:
+            continue
+        # Prevent double-credit in same month
+        month_key = today_iso[:7]
+        existing = await db.savings.find_one({
+            "memberId": m["id"],
+            "description": f"Savings interest {month_key}",
+        }, {"_id": 0})
+        if existing:
+            continue
+        interest = round(balance * monthly_rate, 2)
+        if interest <= 0:
+            continue
+        txn = SavingsTransaction(
+            memberId=m["id"], memberName=m["name"], type="deposit",
+            amount=interest, date=today_iso,
+            description=f"Savings interest {month_key}",
+        )
+        await db.savings.insert_one(txn.model_dump())
+        await notify(m["id"], f"💚 बचत पर मासिक ब्याज ₹{interest} ({annual_rate}%/वर्ष) जमा हुआ", "savings_interest", txn.id)
+        transferred.append({"memberId": m["id"], "name": m["name"], "amount": interest})
+    return {"transferred": transferred, "totalMembers": len(transferred), "monthlyRate": round(monthly_rate * 100, 4)}
+
+
 # ==================== Loan extra: eligible guarantors & edit ====================
 
 @api_router.get("/loans/eligible-guarantors/{member_id}")
@@ -1155,27 +1259,34 @@ async def update_settings(input: SettingsUpdate, user: Member = Depends(get_curr
 async def dashboard_stats(user: Member = Depends(get_current_user)):
     """Returns admin-level aggregate stats."""
     contribs = await db.contributions.find({"status": "paid"}, {"_id": 0}).to_list(5000)
-    loans = await db.loans.find({"status": {"$in": ["active", "completed"]}}, {"_id": 0}).to_list(2000)
+    loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    personal_loans = await db.loans.find({"isPersonal": True}, {"_id": 0}).to_list(500)
     pending_loans = await db.loans.find({"status": "pending"}, {"_id": 0}).to_list(2000)
+    pending_savings = await db.savings.find({"status": "pending", "type": "deposit"}, {"_id": 0}).to_list(500)
     penalties = await db.penalties.find({}, {"_id": 0}).to_list(5000)
-    savings_txns = await db.savings.find({}, {"_id": 0}).to_list(5000)
+    savings_txns = await db.savings.find({"status": "approved"}, {"_id": 0}).to_list(5000)
     total_collection = sum(c["amount"] for c in contribs)
     total_loans_given = sum(l["amount"] for l in loans)
+    total_personal_loans = sum(l["amount"] for l in personal_loans)
     total_penalty = sum(p["amount"] for p in penalties)
     total_interest = sum(l.get("totalInterest", 0) for l in loans if l.get("includeInApp", True))
     total_savings = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in savings_txns)
     remaining_balance = total_collection - total_loans_given + sum(
         sum(e.get("amount", 0) for e in l.get("emiHistory", []) if e.get("status") == "paid") for l in loans
     )
+    pending_savings_amount = sum(t["amount"] for t in pending_savings)
     return {
         "totalCollection": round(total_collection, 2),
         "totalLoansGiven": round(total_loans_given, 2),
+        "totalPersonalLoans": round(total_personal_loans, 2),
         "remainingBalance": round(remaining_balance, 2),
         "totalPenalty": round(total_penalty, 2),
         "totalInterest": round(total_interest, 2),
         "totalSavings": round(total_savings, 2),
         "pendingLoansCount": len(pending_loans),
         "activeLoansCount": len([l for l in loans if l["status"] == "active"]),
+        "pendingSavingsCount": len(pending_savings),
+        "pendingSavingsAmount": round(pending_savings_amount, 2),
     }
 
 
@@ -1212,8 +1323,8 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     total_penalty = sum(p["amount"] for p in rel_penalties)
     penalty_share = round((share_contrib / total_all_contribs) * total_penalty, 2) if total_all_contribs else 0
 
-    # Loans interest (loans opened after joining)
-    loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True}, {"_id": 0}).to_list(2000)
+    # Loans interest (loans opened after joining, excluding personal loans)
+    loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
     rel_loans = [l for l in loans if l["openingDate"][:10] >= joining[:10]]
     total_interest = sum(l.get("totalInterest", 0) for l in rel_loans)
     interest_share = round((share_contrib / total_all_contribs) * total_interest, 2) if total_all_contribs else 0
@@ -1238,19 +1349,27 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     # ====== Pending Penalty (currently accruing) ======
     settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
     fee_per_day = settings_doc["lateFeePerDay"]
+    penalty_start_str = settings_doc.get("penaltyStartDate", "2026-03-10")
+    try:
+        penalty_start = datetime.strptime(penalty_start_str[:10], "%Y-%m-%d")
+    except Exception:
+        penalty_start = datetime(2026, 3, 10)
     pending_penalty = 0
     pending_penalty_items = []
 
     if not is_admin:
         # All months from joining to current that are missing
         join_date = datetime.strptime(member["joiningDate"][:10], "%Y-%m-%d")
-        cursor = datetime(join_date.year, join_date.month, 1)
+        # Use the later of joining and penaltyStartDate
+        effective_start = max(join_date, datetime(penalty_start.year, penalty_start.month, 1))
+        cursor = datetime(effective_start.year, effective_start.month, 1)
         while cursor <= now:
             mkey = f"{cursor.year}-{cursor.month:02d}"
             if mkey not in paid_months:
-                # Calculate days late after 11th of that month
                 due_day = datetime(cursor.year, cursor.month, 11, 23, 59, 59)
-                if now > due_day:
+                if due_day < penalty_start:
+                    pass  # skip — before grace start
+                elif now > due_day:
                     days_late = math.ceil((now - due_day).total_seconds() / 86400)
                     p = days_late * fee_per_day
                     pending_penalty += p
@@ -1265,10 +1384,13 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
             else:
                 cursor = datetime(cursor.year, cursor.month + 1, 1)
 
-        # Check unpaid EMIs past due date
+        # Check unpaid EMIs past due date (only after penaltyStartDate)
         for ml in member_loans:
             if ml["status"] not in ["active"]:
                 continue
+            if ml.get("isPersonal"):
+                # personal loan penalties not aggregated for group share, but still counted as personal due
+                pass
             for emi in ml.get("emiHistory", []):
                 if emi["status"] == "pending":
                     due_str = emi["dueDate"][:10]
@@ -1280,9 +1402,10 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
                         except Exception:
                             continue
                     due_end = datetime(due_dt.year, due_dt.month, 11, 23, 59, 59)
+                    if due_end < penalty_start:
+                        continue  # skip — before grace start
                     if now > due_end:
                         days_late = math.ceil((now - due_end).total_seconds() / 86400)
-                        # If contribution also late same month, double penalty
                         same_month_key = f"{due_dt.year}-{due_dt.month:02d}"
                         rate_per_day = fee_per_day * 2 if same_month_key not in paid_months and same_month_key != current_month_key else fee_per_day
                         p = days_late * rate_per_day

@@ -1,0 +1,41 @@
+{
+  "summary": "Iter6 backend testing of SHG BANK: pending-savings stats, savings-interest 7.25% monthly distribution, penaltyStartDate gating, and the new Personal Loan section. Wrote 22 pytest tests in test_shg_v6_features.py — ALL 22 PASS. Every iter6 feature in the review-request works as specified: GET/PUT /api/settings with penaltyStartDate + savingsInterestRate; dashboard/stats new fields pendingSavingsCount / pendingSavingsAmount / totalPersonalLoans; pending count correctly increments on member self-deposit and decrements after admin approval; pendingPenalty=0 when penaltyStartDate is in the future and >0 once moved to the past; POST /api/personal-loans creates loan with isPersonal=True / includeInApp=False / status=active (or completed if closingDate), correct EMI history, fires personal_loan notification, returns 403 for non-admin and 404 for invalid member, appears in GET /api/loans, contributes to totalPersonalLoans, is excluded from dashboard totalInterest and member-stats interestShare; POST /api/savings/distribute-savings-interest is admin-only, returns monthlyRate≈0.6042, credits proportional interest on each member's approved balance, skips zero-balance members, is idempotent within the same calendar month, and fires savings_interest notifications.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/personal-loans", "issue": "EMI due dates: dueDate is built from openingDate.month+i+1; when openingDate's day-of-month > 11 the first EMI on day-11 of next month is technically before opening_date + 1 month. Not a regression, but operationally a member could see an EMI 'due' 2-3 weeks after the loan opens. Consider documenting or adjusting."},
+      {"endpoint": "POST /api/personal-loans", "issue": "PersonalLoanInput.amount accepts negative or zero values (no Field(gt=0) validator). Recommend Pydantic Field(gt=0) for amount and months."},
+      {"endpoint": "POST /api/savings/distribute-savings-interest", "issue": "Idempotency key uses only description string 'Savings interest YYYY-MM'. If a member transferred their savings out and back in the same month, the description-match still blocks them. Low priority — acceptable for monthly accrual."},
+      {"endpoint": "GET /api/members/{id}/stats - pendingPenalty", "issue": "EMI-pending-penalty branch in member_stats includes a `if ml.get('isPersonal'): pass` no-op comment 'still counted as personal due' but in fact the EMI loop falls through and DOES add the EMI penalty for personal loans into pendingPenalty. Either the comment is wrong or behaviour should skip personal-loan EMIs from group pending_penalty. Today the value rolls up regardless. server.py ~lines 1388-1419."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v6_features.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add Pydantic Field(gt=0) on PersonalLoanInput.amount/months and SettingsUpdate.savingsInterestRate (>=0).",
+    "(Optional) Decide whether personal-loan EMI lateness should add to a member's group pendingPenalty; currently it does, but a code comment suggests otherwise.",
+    "(Carry-over) server.py is now 1626 lines — split into routers/services.",
+    "(Carry-over) Hash passwords + switch tokens from raw memberId UUID to signed JWT.",
+    "(Carry-over from iter5) approve_loan / reject_loan still do not fire notify() — please verify if main agent fixed this; not retested in iter6."
+  ],
+  "critical_code_review_comments": [
+    "Personal-loan and savings-interest endpoints are correctly excluded from group-level interest aggregation (dashboard.totalInterest filters isPersonal!=True, member_stats interestShare uses includeInApp=True AND isPersonal!=True). Good.",
+    "distribute-savings-interest correctly uses idempotent guard via description match and notification per-credited member.",
+    "Loan model now has isPersonal:bool=False and includeInApp:bool=True — GET /api/loans returns both kinds and frontend can filter on isPersonal. Good.",
+    "server.py file size: 1626 lines (was 1500 in iter5). Strongly recommend modularising to routers/services before further growth.",
+    "Plaintext passwords + raw-UUID Bearer tokens remain — security carry-over from iter4."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_shg_v6_features.py (NEW - 22 tests covering every iter6 review-request scenario)"
+  ],
+  "success_rate": {"backend": "100% (22/22 passed)", "frontend": "N/A (backend-only test)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Per-test inline seeding. NISHA gets a TEST_v6 deposit (admin-approved + member-self) and MEENA gets a personal loan. All test data is cleaned up at the end of each class (savings interest txns deleted by description, personal loans deleted by id). After this run the DB is back to the same starting state as before the run (settings.penaltyStartDate is restored to 2026-06-10).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_shg_v6_features.py is self-contained and idempotent. Helper _load_frontend_env_url() falls back to reading /app/frontend/.env if REACT_APP_BACKEND_URL is not in os.environ — pytest works either way. NISHA's savings balance during the run will temporarily contain a 123 deposit (approved during TestDashboardStats) plus 1000 (TestDistributeSavingsInterest seed); both are deleted at class teardown. If you need to test approve_loan/reject_loan notifications carry-over from iter5, those tests live in test_shg_v5_notifications.py.",
+  "rca of the issue": "No issues to RCA — all 22 iter6 test cases pass on the first clean run. The earlier intra-run interest-amount mismatch (6.78 vs 6.04) was a test-side oversight: the test had hard-coded balance=1000 but NISHA's actual balance during distribute included a prior 123 admin-approved deposit from TestDashboardStats. Fixed by reading the live balance via GET /api/savings/balance/{member_id} before the distribute call and verifying interest = balance_before * 7.25/12/100."
+}

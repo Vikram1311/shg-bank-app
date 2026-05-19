@@ -8,7 +8,8 @@ import OldLoanModal from '../components/OldLoanModal';
 import MemberDetailModal from '../components/MemberDetailModal';
 import EMIPayModal from '../components/EMIPayModal';
 import QuickActionsCard from '../components/QuickActions';
-import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight, Trash } from 'lucide-react';
+import PersonalLoansTab from '../components/PersonalLoansTab';
+import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight, Trash, Briefcase, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -60,7 +61,9 @@ export default function AdminDashboard() {
   const tabs = [
     { id: 'overview', label: t('overview'), icon: TrendingUp },
     { id: 'loans', label: t('loans'), icon: Coins },
+    { id: 'personal', label: 'व्यक्तिगत ऋण', icon: Briefcase },
     { id: 'contributions', label: t('contributions'), icon: PiggyBank },
+    { id: 'savings', label: t('savings'), icon: PiggyBank },
     { id: 'members', label: t('members'), icon: Users },
     { id: 'settings', label: t('settings'), icon: SettingsIcon },
   ];
@@ -103,6 +106,30 @@ export default function AdminDashboard() {
               <StatCard icon={History} label={t('pendingLoans')} value={stats.pendingLoansCount} accent="secondary" testId="admin-stat-pending" />
               <StatCard icon={Users} label={t('members')} value={members.length} accent="primary" testId="admin-stat-members" />
             </div>
+
+            {/* Pending savings approval banner */}
+            {stats.pendingSavingsCount > 0 && (
+              <div
+                onClick={() => setActiveTab('savings')}
+                className="card-3d p-5 bg-gradient-to-r from-amber-100 to-orange-100 border-2 border-amber-300 cursor-pointer hover:shadow-xl transition-all"
+                data-testid="pending-savings-banner"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center animate-pulse">
+                    <Clock className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-heading font-black text-lg text-amber-900">
+                      {stats.pendingSavingsCount} सदस्य की बचत जमा requests लंबित हैं
+                    </p>
+                    <p className="text-sm font-bold text-amber-800">
+                      कुल राशि: {fc(stats.pendingSavingsAmount)} • Review & Approve →
+                    </p>
+                  </div>
+                  <ChevronRight className="w-6 h-6 text-amber-700" />
+                </div>
+              </div>
+            )}
 
             {/* CSV Export + Quick Actions */}
             <div className="grid lg:grid-cols-2 gap-4">
@@ -587,6 +614,8 @@ function SettingsTab({ settings, onUpdate }) {
           <Field label="Max Loan (with Guarantor)" type="number" value={form.maxLoanAmountWithGuarantor} onChange={(v) => setForm({ ...form, maxLoanAmountWithGuarantor: Number(v) })} testId="settings-maxloan-guarantor" />
           <Field label={t('interestRate') + ' (%)'} type="number" value={form.interestRate} onChange={(v) => setForm({ ...form, interestRate: Number(v) })} testId="settings-rate" />
           <Field label={t('lateFee')} type="number" value={form.lateFeePerDay} onChange={(v) => setForm({ ...form, lateFeePerDay: Number(v) })} testId="settings-fee" />
+          <Field label="Penalty Start Date" type="date" value={form.penaltyStartDate?.slice(0, 10)} onChange={(v) => setForm({ ...form, penaltyStartDate: v })} testId="settings-penalty-start" />
+          <Field label="Savings Interest (% annual)" type="number" value={form.savingsInterestRate} onChange={(v) => setForm({ ...form, savingsInterestRate: Number(v) })} testId="settings-savings-rate" />
           <button onClick={save} disabled={loading} className="btn-3d-primary" data-testid="settings-save-btn">{loading ? t('loading') : t('saveSettings')}</button>
         </div>
       </div>

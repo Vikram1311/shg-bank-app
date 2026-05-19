@@ -32,6 +32,18 @@ export default function AdminSavingsTab({ members }) {
     } finally { setDistributing(false); }
   };
 
+  const distributeSavingsInterest = async () => {
+    if (!window.confirm('मासिक बचत ब्याज (7.25% सालाना) सभी सदस्यों को वितरित करें?')) return;
+    setDistributing(true);
+    try {
+      const r = await api.post('/savings/distribute-savings-interest');
+      toast.success(`${r.data.totalMembers} सदस्यों को मासिक बचत ब्याज जमा हुआ (${r.data.monthlyRate}% मासिक)`);
+      load();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('error'));
+    } finally { setDistributing(false); }
+  };
+
   const remove = async (id) => {
     if (!window.confirm(t('confirm') + '?')) return;
     try {
@@ -88,7 +100,10 @@ export default function AdminSavingsTab({ members }) {
               <ArrowUpCircle className="w-4 h-4" /> Withdraw
             </button>
             <button onClick={distributeInterest} disabled={distributing} className="btn-3d-accent flex items-center gap-2" data-testid="distribute-interest-btn">
-              <Sparkles className="w-4 h-4" /> {distributing ? t('loading') : 'ब्याज वितरण'}
+              <Sparkles className="w-4 h-4" /> {distributing ? t('loading') : 'ब्याज वितरण (Loan)'}
+            </button>
+            <button onClick={distributeSavingsInterest} disabled={distributing} className="btn-3d-primary flex items-center gap-2" data-testid="distribute-savings-interest-btn">
+              <Sparkles className="w-4 h-4" /> मासिक बचत ब्याज (7.25%)
             </button>
           </div>
         </div>
