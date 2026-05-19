@@ -3,7 +3,9 @@ import { useApp } from '../contexts/AppContext';
 import api from '../lib/api';
 import Header from '../components/Header';
 import StatCard from '../components/StatCard';
-import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert } from 'lucide-react';
+import AdminSavingsTab from '../components/AdminSavingsTab';
+import OldLoanModal from '../components/OldLoanModal';
+import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -142,8 +144,9 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {activeTab === 'loans' && <LoansTab loans={loans} onChange={loadAll} />}
+        {activeTab === 'loans' && <LoansTab loans={loans} members={members} onChange={loadAll} />}
         {activeTab === 'contributions' && <ContributionsTab members={members} onChange={loadAll} />}
+        {activeTab === 'savings' && <AdminSavingsTab members={members} />}
         {activeTab === 'members' && <MembersTab members={members} onChange={loadAll} />}
         {activeTab === 'settings' && <SettingsTab settings={settings} onUpdate={setSettings} />}
       </main>
@@ -181,9 +184,10 @@ function PendingLoanRow({ loan, onAction }) {
   );
 }
 
-function LoansTab({ loans, onChange }) {
+function LoansTab({ loans, members, onChange }) {
   const { t, fc, fd } = useApp();
   const [filter, setFilter] = useState('all');
+  const [showOldLoan, setShowOldLoan] = useState(false);
   const filtered = filter === 'all' ? loans : loans.filter((l) => l.status === filter);
 
   const payEMI = async (loanId, emiNumber) => {
@@ -207,13 +211,18 @@ function LoansTab({ loans, onChange }) {
 
   return (
     <div className="space-y-4 animate-slide-up" data-testid="admin-loans-tab">
-      <div className="flex gap-2 flex-wrap">
-        {['all', 'pending', 'active', 'completed', 'rejected'].map((f) => (
-          <button key={f} onClick={() => setFilter(f)} data-testid={`loan-filter-${f}`}
-            className={`px-3 py-1.5 rounded-xl text-sm font-bold ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-white/80'}`}>
-            {f === 'all' ? 'All' : t(f)}
-          </button>
-        ))}
+      <div className="flex gap-2 flex-wrap items-center justify-between">
+        <div className="flex gap-2 flex-wrap">
+          {['all', 'pending', 'active', 'completed', 'rejected'].map((f) => (
+            <button key={f} onClick={() => setFilter(f)} data-testid={`loan-filter-${f}`}
+              className={`px-3 py-1.5 rounded-xl text-sm font-bold ${filter === f ? 'bg-primary text-primary-foreground' : 'bg-white/80'}`}>
+              {f === 'all' ? 'All' : t(f)}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowOldLoan(true)} className="btn-3d-accent flex items-center gap-2" data-testid="add-old-loan-btn">
+          <FileClock className="w-4 h-4" /> {t('addOldLoan')}
+        </button>
       </div>
       {filtered.length === 0 ? (
         <div className="card-3d p-10 text-center text-muted-foreground">{t('noData')}</div>
@@ -224,7 +233,11 @@ function LoansTab({ loans, onChange }) {
               <div>
                 <p className="font-heading font-black text-lg">{l.memberName}</p>
                 <p className="text-sm text-muted-foreground">{fc(l.amount)} • {l.months} mo • EMI {fc(l.emiAmount)}</p>
-                <span className="pill mt-2 bg-primary/10 text-primary">{t(l.status)}</span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="pill bg-primary/10 text-primary">{t(l.status)}</span>
+                  {l.isOldLoan && <span className="pill bg-violet-100 text-violet-700">Old</span>}
+                  {l.guarantorName && <span className="pill bg-amber-100 text-amber-800">गारंटर: {l.guarantorName}</span>}
+                </div>
               </div>
               <button onClick={() => deleteLoan(l.id)} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100" data-testid={`delete-loan-${l.id}`}>
                 <Trash2 className="w-4 h-4" />
@@ -257,6 +270,7 @@ function LoansTab({ loans, onChange }) {
           </div>
         ))
       )}
+      {showOldLoan && <OldLoanModal members={members} onClose={() => setShowOldLoan(false)} onSuccess={onChange} />}
     </div>
   );
 }
@@ -268,12 +282,23 @@ function ContributionsTab({ members, onChange }) {
   const [contribs, setContribs] = useState([]);
   const [applyPenalty, setApplyPenalty] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [editingContrib, setEditingContrib] = useState(null);
 
   const loadContribs = async () => {
     const r = await api.get('/contributions');
-    setContribs(r.data);
+    setContribs(r.data.sort((a, b) => b.month.localeCompare(a.month)));
   };
   useEffect(() => { loadContribs(); }, []);
+
+  const deleteContrib = async (id) => {
+    if (!window.confirm(t('confirm') + '?')) return;
+    try {
+      await api.delete(`/contributions/${id}`);
+      toast.success(t('success'));
+      await loadContribs();
+      onChange();
+    } catch { toast.error(t('error')); }
+  };
 
   const nonAdmin = members.filter((m) => !m.isAdmin && m.isActive);
   const submit = async () => {
@@ -355,20 +380,72 @@ function ContributionsTab({ members, onChange }) {
                 <th className="text-left p-2 font-bold">{t('amount')}</th>
                 <th className="text-left p-2 font-bold">Penalty</th>
                 <th className="text-left p-2 font-bold">{t('paidDate')}</th>
+                <th className="text-left p-2 font-bold">{t('actions')}</th>
               </tr>
             </thead>
             <tbody>
-              {contribs.slice(0, 50).map((c) => (
-                <tr key={c.id} className="border-t border-border/60">
+              {contribs.slice(0, 100).map((c) => (
+                <tr key={c.id} className="border-t border-border/60" data-testid={`contrib-row-${c.id}`}>
                   <td className="p-2 font-bold">{c.memberName}</td>
                   <td className="p-2">{c.month}</td>
                   <td className="p-2 text-primary font-bold">{fc(c.amount)}</td>
                   <td className="p-2 text-amber-700">{c.penalty > 0 ? fc(c.penalty) : '-'}</td>
                   <td className="p-2 text-xs">{fd(c.paidDate)}</td>
+                  <td className="p-2 flex gap-1">
+                    <button onClick={() => setEditingContrib(c)} className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100" data-testid={`edit-contrib-${c.id}`}>
+                      <Edit className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => deleteContrib(c.id)} className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100" data-testid={`delete-contrib-${c.id}`}>
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+      {editingContrib && <EditContribModal contrib={editingContrib} onClose={() => setEditingContrib(null)} onSuccess={loadContribs} />}
+    </div>
+  );
+}
+
+function EditContribModal({ contrib, onClose, onSuccess }) {
+  const { t } = useApp();
+  const [amount, setAmount] = useState(contrib.amount);
+  const [paidDate, setPaidDate] = useState(contrib.paidDate?.slice(0, 10) || '');
+  const [penalty, setPenalty] = useState(contrib.penalty || 0);
+  const [loading, setLoading] = useState(false);
+
+  const save = async () => {
+    setLoading(true);
+    try {
+      await api.put(`/contributions/${contrib.id}`, { amount: Number(amount), paidDate, penalty: Number(penalty) });
+      toast.success(t('success'));
+      onSuccess();
+      onClose();
+    } catch { toast.error(t('error')); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="card-3d max-w-md w-full p-6" onClick={(e) => e.stopPropagation()} data-testid="edit-contrib-modal">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-heading font-black text-xl">Edit Contribution</h2>
+          <button onClick={onClose}><X className="w-5 h-5" /></button>
+        </div>
+        <div className="space-y-3">
+          <div><label className="text-xs font-bold">{t('amount')}</label>
+            <input type="number" className="input-3d" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="edit-contrib-amount" />
+          </div>
+          <div><label className="text-xs font-bold">{t('paidDate')}</label>
+            <input type="date" className="input-3d" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} data-testid="edit-contrib-date" />
+          </div>
+          <div><label className="text-xs font-bold">Penalty</label>
+            <input type="number" className="input-3d" value={penalty} onChange={(e) => setPenalty(e.target.value)} data-testid="edit-contrib-penalty" />
+          </div>
+          <button onClick={save} disabled={loading} className="btn-3d-primary w-full" data-testid="edit-contrib-save-btn">{loading ? t('loading') : t('save')}</button>
         </div>
       </div>
     </div>

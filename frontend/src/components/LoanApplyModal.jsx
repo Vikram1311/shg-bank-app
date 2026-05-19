@@ -1,16 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../contexts/AppContext';
 import api from '../lib/api';
-import { Calculator, Send, X } from 'lucide-react';
+import { Calculator, Send, X, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function LoanApplyModal({ open, onClose, memberId, onSuccess, canApply }) {
+export default function LoanApplyModal({ open, onClose, memberId, onSuccess, canApply, blockReason }) {
   const { t, fc, settings } = useApp();
   const [amount, setAmount] = useState(5000);
   const [months, setMonths] = useState(3);
+  const [guarantorId, setGuarantorId] = useState('');
+  const [guarantors, setGuarantors] = useState([]);
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(false);
+
   const maxLoan = settings?.maxLoanAmount || 15000;
+  const maxWithGuarantor = settings?.maxLoanAmountWithGuarantor || 30000;
+  const needsGuarantor = Number(amount) > maxLoan;
+
+  useEffect(() => {
+    if (!open) return;
+    api.get(`/loans/eligible-guarantors/${memberId}`).then((r) => setGuarantors(r.data)).catch(() => setGuarantors([]));
+  }, [open, memberId]);
 
   useEffect(() => {
     if (!open || !amount || !months) return;
@@ -21,12 +31,21 @@ export default function LoanApplyModal({ open, onClose, memberId, onSuccess, can
 
   const submit = async () => {
     if (!canApply) {
-      toast.error(t('notEligibleLoan'));
+      toast.error(blockReason === 'guarantor_block_75'
+        ? 'आप किसी सक्रिय ऋण के गारंटर हैं। 75% भुगतान तक नया ऋण नहीं मिलेगा।'
+        : t('notEligibleLoan'));
+      return;
+    }
+    if (needsGuarantor && !guarantorId) {
+      toast.error(`₹${maxLoan} से अधिक ऋण के लिए गारंटर चुनें`);
       return;
     }
     setLoading(true);
     try {
-      await api.post('/loans/apply', { memberId, amount: Number(amount), months: Number(months) });
+      await api.post('/loans/apply', {
+        memberId, amount: Number(amount), months: Number(months),
+        guarantorId: needsGuarantor ? guarantorId : null,
+      });
       toast.success(t('requestSent'));
       onSuccess?.();
       onClose();
@@ -53,17 +72,21 @@ export default function LoanApplyModal({ open, onClose, memberId, onSuccess, can
 
         {!canApply && (
           <div className="mb-4 p-3 rounded-2xl bg-red-50 border-2 border-red-200 text-red-800 text-sm font-bold" data-testid="loan-not-eligible-warn">
-            ⚠️ {t('notEligibleLoan')}
+            ⚠️ {blockReason === 'guarantor_block_75'
+              ? 'आप किसी सक्रिय ऋण के गारंटर हैं। 75% भुगतान तक नया ऋण नहीं मिलेगा।'
+              : t('notEligibleLoan')}
           </div>
         )}
 
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-bold mb-2 block">{t('loanAmount')} (max ₹{maxLoan})</label>
+            <label className="text-sm font-bold mb-2 block">
+              {t('loanAmount')} ({fc(500)} - {fc(maxWithGuarantor)})
+            </label>
             <input
               type="range"
               min="500"
-              max={maxLoan}
+              max={maxWithGuarantor}
               step="500"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
@@ -76,10 +99,40 @@ export default function LoanApplyModal({ open, onClose, memberId, onSuccess, can
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               min="500"
-              max={maxLoan}
+              max={maxWithGuarantor}
               data-testid="loan-amount-input"
             />
+            {needsGuarantor && (
+              <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4" />
+                ₹{maxLoan} से अधिक के लिए गारंटर अनिवार्य है
+              </div>
+            )}
           </div>
+
+          {needsGuarantor && (
+            <div data-testid="guarantor-selector">
+              <label className="text-sm font-bold mb-2 block flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-accent" />
+                गारंटर चुनें (Guarantor)
+              </label>
+              <select
+                className="input-3d"
+                value={guarantorId}
+                onChange={(e) => setGuarantorId(e.target.value)}
+                data-testid="guarantor-select"
+              >
+                <option value="">-- {t('selectMember')} --</option>
+                {guarantors.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name} ({g.mobile})</option>
+                ))}
+              </select>
+              {guarantors.length === 0 && (
+                <p className="text-xs text-red-600 font-bold mt-1">कोई पात्र गारंटर उपलब्ध नहीं</p>
+              )}
+            </div>
+          )}
+
           <div>
             <label className="text-sm font-bold mb-2 block">{t('selectMonths')}</label>
             <div className="grid grid-cols-6 gap-2">

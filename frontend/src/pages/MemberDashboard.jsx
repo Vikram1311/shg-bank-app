@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import StatCard from '../components/StatCard';
 import QRPayment from '../components/QRPayment';
 import LoanApplyModal from '../components/LoanApplyModal';
+import MemberSavingsTab from '../components/MemberSavingsTab';
 import { Wallet, TrendingUp, Sparkles, Trophy, PiggyBank, Coins, AlertTriangle, Plus, KeyRound, Lock, X, Calendar, History, CheckCircle2, Hourglass, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -51,6 +52,7 @@ export default function MemberDashboard() {
     { id: 'overview', label: t('overview'), icon: TrendingUp },
     { id: 'loans', label: t('loans'), icon: Coins },
     { id: 'contributions', label: t('contributions'), icon: PiggyBank },
+    { id: 'savings', label: t('savings'), icon: PiggyBank },
     { id: 'profile', label: t('profile'), icon: KeyRound },
   ];
 
@@ -226,6 +228,9 @@ export default function MemberDashboard() {
         {activeTab === 'profile' && (
           <ProfileTab onUpdate={refreshUser} onChangePwd={() => setShowPwdModal(true)} />
         )}
+
+        {/* Savings tab */}
+        {activeTab === 'savings' && <MemberSavingsTab />}
       </main>
 
       <LoanApplyModal
@@ -233,6 +238,7 @@ export default function MemberDashboard() {
         onClose={() => setShowLoanModal(false)}
         memberId={user.id}
         canApply={stats?.canApplyLoan}
+        blockReason={stats?.blockReason}
         onSuccess={loadData}
       />
       {showPwdModal && <ChangePasswordModal onClose={() => setShowPwdModal(false)} />}

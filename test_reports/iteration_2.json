@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 2 backend testing of SHG BANK new features: guarantor system, member self-savings, admin edit/delete on savings/contributions/loans, and interest auto-distribution. Wrote 31 new pytest tests in test_shg_v2_features.py covering all 19 review-request scenarios. After fixing one missing-field bug in apply_loan, ALL 31 tests pass (100%).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/loans/apply", "issue": "Original bug: guarantorId & guarantorName were validated but NEVER persisted on the Loan document - Loan() constructor in apply_loan was missing the two fields. Fixed during testing (see updated_files)."},
+      {"endpoint": "POST /api/savings/distribute-interest", "issue": "Admin's share_contrib uses average of non_admin contributions; ratio share = (share_contrib/total_contribs)*total_interest. This will mean total distributed != total_interest (since admin gets an extra avg slice on top of 100%). Verify intended business logic with stakeholder."},
+      {"endpoint": "POST /api/savings/distribute-interest", "issue": "Uses regex match on description='Interest auto-credit' to detect prior credits — if admin renames an entry via PUT /api/savings/{id} the dedupe will miss it and double-credit."},
+      {"endpoint": "PUT /api/savings/{txn_id}", "issue": "No validation that 'type' (if updated) is in ['deposit','withdrawal']; also no balance check when changing amount/type — could yield negative balance."},
+      {"endpoint": "PUT /api/loans/{loan_id}", "issue": "No 404 when loan_id does not exist (silent no-op, returns null body)."},
+      {"endpoint": "PUT /api/contributions/{contrib_id}", "issue": "Same — no 404 on missing id; also allows status update to any string (no enum validation)."},
+      {"endpoint": "GET /api/loans/eligible-guarantors/{member_id}", "issue": "Performs N+1 query (one DB call per member for is_member_blocked_as_guarantor). Fine at 24 members but will not scale."},
+      {"endpoint": "GET /api/loans/eligible-guarantors/{member_id}", "issue": "Does not validate that member_id exists - returns full list even for nonexistent id."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_shg_v2_features.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "Verified & shipped: guarantorId/guarantorName now correctly persisted on new loans (fixed in /app/backend/server.py apply_loan).",
+    "Consider rejecting type updates outside ['deposit','withdrawal'] on PUT /api/savings/{id} and recomputing balance.",
+    "Add 404 on PUT /api/loans/{id} and PUT /api/contributions/{id} when document not found.",
+    "Confirm distribute-interest math: admin shouldn't share in their own interest unless intended.",
+    "Update obsolete test_shg_backend.py::test_savings_deposit_non_admin_blocked — expected 403 but member self-deposit is now allowed by design (new feature). Old test must be updated or removed.",
+    "Carry over from iteration_1: hash passwords, switch to JWT, add 404s on approve/reject, validate memberId in savings deposit/withdraw, balance-check withdraw, mobile uniqueness on member PUT, CSV proper response type."
+  ],
+  "critical_code_review_comments": [
+    "BUG (FIXED): apply_loan dropped guarantor fields silently — the entire guarantor feature was non-functional for new loans before fix.",
+    "is_member_blocked_as_guarantor uses python sum on (paid_amount/total) — handles total=0 via 'or 1' which masks bad data but is acceptable.",
+    "distribute-interest dedupe relies on description string match ('^Interest auto-credit') — fragile to admin edits.",
+    "No transactional/atomic safety on distribute-interest: a crash mid-loop leaves partial credits; idempotency saves a re-run though.",
+    "Member.password still plaintext (carried over from iteration_1 - security CRITICAL).",
+    "Token is still raw memberId UUID (carried over - security CRITICAL).",
+    "No 404 handling on PUT /api/loans/{id}, PUT /api/contributions/{id} - silently no-ops and returns null.",
+    "server.py is now ~1127 lines - approaching the 700-line guideline; consider splitting into routers (auth, loans, contributions, savings, settings, stats)."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (apply_loan: pass guarantorId+guarantorName to Loan constructor)",
+    "/app/backend/tests/test_shg_v2_features.py (new test file with 31 tests for v2 features)"
+  ],
+  "success_rate": {"backend": "100% on v2 features (31/31). Iteration 1 suite: 39/43 — 4 failures are stale-state from MongoDB persistence between runs, not regressions.", "frontend": "N/A (backend-only test)"},
+  "test_credentials": "Admin 9315341037/1311, NISHA 9711321568/1568, MEENA 9289137685/7685, REKHA 7678253940/3940 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests created/left in MongoDB: 1 active loan for NISHA (₹20000, 4 months, MEENA guarantor, 3/4 EMIs paid -> 75% complete still active), interest auto-credit savings entries for several members (Interest auto-credit description), and a few TEST_ contribution edits. Old loan tests cleaned up after themselves.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New feature test file: /app/backend/tests/test_shg_v2_features.py uses module-level SHARED dict for cross-test state. The clean_state autouse fixture deletes active loans for NISHA/MEENA/REKHA before tests so guarantor flow is deterministic. apply_loan now correctly persists guarantor fields. distribute-interest idempotency works via description regex match. test_shg_backend.py::test_savings_deposit_non_admin_blocked is now WRONG by spec (self-deposit allowed).",
+  "rca of the issue": "RCA - guarantorId not stored on loan: In server.py apply_loan() the input.guarantorId was validated (existence, self-check, blocked-check) and guarantor_name was looked up, but when constructing the Loan() Pydantic instance the two fields were never passed. Since Loan model defaults them to None, the loan was created with guarantorId=None. Downstream is_member_blocked_as_guarantor() never found the guarantor, so the entire 'block guarantor until 75% paid' logic was dead. Fix: 2 lines added (guarantorId=input.guarantorId, guarantorName=guarantor_name) to the Loan() ctor. Reproduction: POST /api/loans/apply with amount>15000 and a valid guarantorId — pre-fix the returned loan.guarantorId was null. Post-fix it correctly stores both id and name."
+}

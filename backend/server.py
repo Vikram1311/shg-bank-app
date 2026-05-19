@@ -69,6 +69,8 @@ class Loan(BaseModel):
     status: Literal["pending", "active", "completed", "rejected", "recalled"] = "pending"
     isOldLoan: bool = False
     includeInApp: bool = True
+    guarantorId: Optional[str] = None
+    guarantorName: Optional[str] = None
     emiHistory: List[EMIRecord] = []
 
 
@@ -114,6 +116,7 @@ class Settings(BaseModel):
     groupName: str = "SHG BANK"
     monthlyContribution: float = 1000
     maxLoanAmount: float = 15000
+    maxLoanAmountWithGuarantor: float = 30000
     interestRate: float = 2
     lateFeePerDay: float = 10
     dueDate: int = 11
@@ -149,6 +152,7 @@ class LoanApplyInput(BaseModel):
     memberId: str
     amount: float
     months: int
+    guarantorId: Optional[str] = None
 
 
 class EMIPayInput(BaseModel):
@@ -195,8 +199,29 @@ class SettingsUpdate(BaseModel):
     groupName: Optional[str] = None
     monthlyContribution: Optional[float] = None
     maxLoanAmount: Optional[float] = None
+    maxLoanAmountWithGuarantor: Optional[float] = None
     interestRate: Optional[float] = None
     lateFeePerDay: Optional[float] = None
+
+
+class ContributionUpdate(BaseModel):
+    amount: Optional[float] = None
+    paidDate: Optional[str] = None
+    penalty: Optional[float] = None
+    status: Optional[str] = None
+
+
+class SavingsUpdate(BaseModel):
+    amount: Optional[float] = None
+    date: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+
+
+class LoanUpdate(BaseModel):
+    status: Optional[str] = None
+    includeInApp: Optional[bool] = None
+    closingDate: Optional[str] = None
 
 
 # ==================== Calculations ====================
@@ -253,6 +278,20 @@ def get_contribution_due_date(month: str) -> str:
 
 def get_default_password(mobile: str) -> str:
     return mobile[-4:]
+
+
+async def is_member_blocked_as_guarantor(member_id: str) -> bool:
+    """Returns True if member is currently a guarantor on an active loan with < 75% paid."""
+    active_loans = await db.loans.find(
+        {"guarantorId": member_id, "status": {"$in": ["pending", "active"]}},
+        {"_id": 0},
+    ).to_list(100)
+    for loan in active_loans:
+        paid_amount = sum((e.get("amount", 0) for e in loan["emiHistory"] if e["status"] == "paid"))
+        total = loan.get("totalPayable", 0) or 1
+        if (paid_amount / total) < 0.75:
+            return True
+    return False
 
 
 # ==================== Auth Helper ====================
@@ -428,27 +467,46 @@ async def loan_calculator(input: LoanApplyInput):
 async def apply_loan(input: LoanApplyInput, user: Member = Depends(get_current_user)):
     settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
     settings = Settings(**settings_doc)
-    if input.amount > settings.maxLoanAmount:
-        raise HTTPException(status_code=400, detail=f"Max loan ₹{settings.maxLoanAmount}")
+    # Check max with guarantor
+    if input.amount > settings.maxLoanAmountWithGuarantor:
+        raise HTTPException(status_code=400, detail=f"Max loan ₹{settings.maxLoanAmountWithGuarantor}")
+    needs_guarantor = input.amount > settings.maxLoanAmount
+    if needs_guarantor and not input.guarantorId:
+        raise HTTPException(status_code=400, detail=f"Loans above ₹{settings.maxLoanAmount} require a guarantor")
     if input.months < 1 or input.months > 6:
         raise HTTPException(status_code=400, detail="Months must be 1-6")
 
     # Eligibility: 50% of previous loan must be paid
     active_loans = await db.loans.find({"memberId": input.memberId, "status": {"$in": ["active", "pending"]}}, {"_id": 0}).to_list(50)
-    for l in active_loans:
-        paid = sum(1 for e in l["emiHistory"] if e["status"] == "paid")
-        if paid < math.ceil(l["months"] / 2):
+    for loan_doc in active_loans:
+        paid = sum(1 for e in loan_doc["emiHistory"] if e["status"] == "paid")
+        if paid < math.ceil(loan_doc["months"] / 2):
             raise HTTPException(status_code=400, detail="Previous loan: 50% payment pending")
+
+    # Block if currently a guarantor on another active loan with <75% paid
+    if await is_member_blocked_as_guarantor(input.memberId):
+        raise HTTPException(status_code=400, detail="You are currently a guarantor on an active loan (<75% repaid). Cannot apply for new loan.")
 
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
 
+    guarantor_name = None
+    if input.guarantorId:
+        if input.guarantorId == input.memberId:
+            raise HTTPException(status_code=400, detail="Cannot be your own guarantor")
+        guarantor = await db.members.find_one({"id": input.guarantorId}, {"_id": 0})
+        if not guarantor:
+            raise HTTPException(status_code=400, detail="Guarantor not found")
+        # Check guarantor not already blocked
+        blocked = await is_member_blocked_as_guarantor(input.guarantorId)
+        if blocked:
+            raise HTTPException(status_code=400, detail="Selected guarantor is currently guaranteeing another active loan")
+        guarantor_name = guarantor["name"]
+
     rate = settings.interestRate / 100
     details = calculate_loan_details(input.amount, input.months, rate)
     now = datetime.now()
-    closing = datetime(now.year, now.month + input.months if now.month + input.months <= 12 else (now.month + input.months) % 12 or 12,
-                       min(now.day, 28)) if False else now  # simplified
     closing_date = (datetime(now.year + (now.month + input.months - 1) // 12, ((now.month + input.months - 1) % 12) + 1, min(now.day, 28))).isoformat()
 
     emi_history = []
@@ -484,6 +542,8 @@ async def apply_loan(input: LoanApplyInput, user: Member = Depends(get_current_u
         closingDate=closing_date,
         nextEmiDate=next_emi_date,
         status="pending",
+        guarantorId=input.guarantorId,
+        guarantorName=guarantor_name,
         emiHistory=emi_history,
     )
     await db.loans.insert_one(loan.model_dump())
@@ -693,6 +753,17 @@ async def delete_contribution(contrib_id: str, user: Member = Depends(get_curren
     return {"success": True}
 
 
+@api_router.put("/contributions/{contrib_id}")
+async def edit_contribution(contrib_id: str, input: ContributionUpdate, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    update_data = {k: v for k, v in input.model_dump().items() if v is not None}
+    if update_data:
+        await db.contributions.update_one({"id": contrib_id}, {"$set": update_data})
+    c = await db.contributions.find_one({"id": contrib_id}, {"_id": 0})
+    return c
+
+
 # ==================== Penalty / Savings ====================
 
 @api_router.get("/penalties", response_model=List[PenaltyRecord])
@@ -712,10 +783,20 @@ async def get_savings(memberId: Optional[str] = None, user: Member = Depends(get
     return txns
 
 
+@api_router.get("/savings/balance/{member_id}")
+async def savings_balance(member_id: str, user: Member = Depends(get_current_user)):
+    if user.id != member_id and not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    txns = await db.savings.find({"memberId": member_id}, {"_id": 0}).to_list(2000)
+    balance = sum(t["amount"] if t["type"] == "deposit" else -t["amount"] for t in txns)
+    return {"memberId": member_id, "balance": round(balance, 2)}
+
+
 @api_router.post("/savings/deposit")
 async def savings_deposit(input: SavingsInput, user: Member = Depends(get_current_user)):
-    if not user.isAdmin:
-        raise HTTPException(status_code=403, detail="Admin only")
+    # Allow self-deposit or admin
+    if user.id != input.memberId and not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Forbidden")
     member = await db.members.find_one({"id": input.memberId}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -741,6 +822,99 @@ async def savings_withdraw(input: SavingsInput, user: Member = Depends(get_curre
                              amount=input.amount, date=input.date, description=input.description)
     await db.savings.insert_one(txn.model_dump())
     return txn
+
+
+@api_router.put("/savings/{txn_id}")
+async def edit_savings(txn_id: str, input: SavingsUpdate, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    update_data = {k: v for k, v in input.model_dump().items() if v is not None}
+    if update_data:
+        await db.savings.update_one({"id": txn_id}, {"$set": update_data})
+    t = await db.savings.find_one({"id": txn_id}, {"_id": 0})
+    return t
+
+
+@api_router.delete("/savings/{txn_id}")
+async def delete_savings(txn_id: str, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    await db.savings.delete_one({"id": txn_id})
+    return {"success": True}
+
+
+@api_router.post("/savings/distribute-interest")
+async def distribute_interest_to_savings(user: Member = Depends(get_current_user)):
+    """Admin: distribute each member's earned interest share into their savings account."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    # Calculate current interest share for each member, then transfer
+    all_members = await db.members.find({"isActive": True}, {"_id": 0}).to_list(100)
+    non_admin = [m for m in all_members if not m.get("isAdmin")]
+    all_member_ids = [m["id"] for m in non_admin]
+    all_contribs = await db.contributions.find({"memberId": {"$in": all_member_ids}, "status": "paid"}, {"_id": 0}).to_list(5000)
+    total_contribs = sum(c["amount"] for c in all_contribs)
+    if total_contribs <= 0:
+        raise HTTPException(status_code=400, detail="No contributions yet")
+
+    # Already-distributed marker: check via description prefix
+    today = datetime.now().date().isoformat()
+    transferred = []
+    for m in all_members:
+        joining = m["joiningDate"][:10]
+        member_contribs = [c for c in all_contribs if c["memberId"] == m["id"]]
+        member_total = sum(c["amount"] for c in member_contribs)
+        if m.get("isAdmin"):
+            share_contrib = total_contribs / len(non_admin) if non_admin else 0
+        else:
+            share_contrib = member_total
+        if share_contrib <= 0:
+            continue
+        loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True}, {"_id": 0}).to_list(2000)
+        rel_loans = [l for l in loans if l["openingDate"][:10] >= joining]
+        total_interest = sum(l.get("totalInterest", 0) for l in rel_loans)
+        share = round((share_contrib / total_contribs) * total_interest, 2)
+        # Subtract already-distributed interest
+        existing = await db.savings.find({"memberId": m["id"], "description": {"$regex": "^Interest auto-credit"}}, {"_id": 0}).to_list(500)
+        already = sum(t["amount"] for t in existing if t["type"] == "deposit")
+        to_credit = round(share - already, 2)
+        if to_credit > 0.01:
+            txn = SavingsTransaction(
+                memberId=m["id"], memberName=m["name"], type="deposit",
+                amount=to_credit, date=today, description="Interest auto-credit",
+            )
+            await db.savings.insert_one(txn.model_dump())
+            transferred.append({"memberId": m["id"], "name": m["name"], "amount": to_credit})
+    return {"transferred": transferred, "totalMembers": len(transferred)}
+
+
+# ==================== Loan extra: eligible guarantors & edit ====================
+
+@api_router.get("/loans/eligible-guarantors/{member_id}")
+async def eligible_guarantors(member_id: str, user: Member = Depends(get_current_user)):
+    """Returns members who can act as guarantor for the given member."""
+    members = await db.members.find({"isActive": True}, {"_id": 0}).to_list(100)
+    eligible = []
+    for m in members:
+        if m["id"] == member_id:
+            continue
+        if m.get("isAdmin"):
+            continue
+        blocked = await is_member_blocked_as_guarantor(m["id"])
+        if not blocked:
+            eligible.append({"id": m["id"], "name": m["name"], "mobile": m["mobile"]})
+    return eligible
+
+
+@api_router.put("/loans/{loan_id}")
+async def edit_loan(loan_id: str, input: LoanUpdate, user: Member = Depends(get_current_user)):
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    update_data = {k: v for k, v in input.model_dump().items() if v is not None}
+    if update_data:
+        await db.loans.update_one({"id": loan_id}, {"$set": update_data})
+    l = await db.loans.find_one({"id": loan_id}, {"_id": 0})
+    return l
 
 
 # ==================== Settings ====================
@@ -848,12 +1022,21 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
 
     # Can apply loan?
     can_apply = True
+    block_reason = None
     active_loans = [l for l in member_loans if l["status"] in ["active", "pending"]]
     for l in active_loans:
         paid = sum(1 for e in l["emiHistory"] if e["status"] == "paid")
         if paid < math.ceil(l["months"] / 2):
             can_apply = False
+            block_reason = "previous_loan_50"
             break
+
+    # Also block if member is currently guarantor on another active loan with <75% paid
+    if can_apply:
+        is_blocked = await is_member_blocked_as_guarantor(member_id)
+        if is_blocked:
+            can_apply = False
+            block_reason = "guarantor_block_75"
 
     return {
         "memberId": member_id,
@@ -866,6 +1049,7 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
         "currentMonth": current_month_key,
         "paidMonths": sorted(list(paid_months)),
         "canApplyLoan": can_apply,
+        "blockReason": block_reason,
         "loansCount": len(member_loans),
     }
 
