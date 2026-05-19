@@ -254,3 +254,46 @@
 - Iteration 5: 15/18 backend tests pass on first run; 2 misses (loan_approved/rejected notifications were silently dropped by a stale state); FIXED post-test by re-applying notify() calls in approve_loan and reject_loan handlers
 - Verified manually after fix: notification fires correctly
 - 1 skipped test (distribute-interest needs preconditions)
+
+---
+## Iteration 6 (Feb 19, 2026) - Pending Savings + Savings Interest + Penalty Reset + Personal Loans
+
+### New Features:
+1. **Admin sees pending savings requests**
+   - Admin Overview now shows colorful clickable banner: "N सदस्यों की बचत जमा requests लंबित हैं" + total ₹
+   - Clicking opens Savings tab where admin can Approve/Reject
+   - `/api/dashboard/stats` returns `pendingSavingsCount` + `pendingSavingsAmount`
+
+2. **7.25% Annual Savings Interest**
+   - New setting `savingsInterestRate: 7.25` (configurable in Settings tab)
+   - New endpoint `POST /api/savings/distribute-savings-interest` - distributes monthly interest (7.25/12 = 0.6042%) on each member's approved savings balance
+   - Idempotent (one credit per member per month, description `Savings interest YYYY-MM`)
+   - Button in Admin Savings tab: "मासिक बचत ब्याज (7.25%)"
+   - Fires `savings_interest` notification
+
+3. **Penalty Reset (functional date)**
+   - New setting `penaltyStartDate: 2026-06-10` (next 10th)
+   - `pendingPenalty` calculation now skips months/EMIs whose due date is before this start date
+   - All current pending penalties → 0
+   - Will activate fresh on 10 June 2026 onwards
+   - Configurable in Settings tab
+
+4. **Personal Loan Section (separate from group)**
+   - New `isPersonal: bool = False` field on Loan model
+   - New endpoint `POST /api/personal-loans` admin creates personal loan
+   - Personal loans EXCLUDED from group's interestShare and totalInterest aggregations
+   - New "व्यक्तिगत ऋण" tab in admin dashboard with separate listing
+   - New PersonalLoanModal with member selector, amount, months, interest rate, opening/closing date, Running/Closed toggle, live EMI estimate
+   - Personal loan EMI lateness does NOT add to group `pendingPenalty`
+   - Fires `personal_loan` notification
+
+### Testing
+- Iteration 6: 22/22 backend tests passed (100%)
+- Minor improvement applied post-test: personal loan EMI lateness excluded from `pendingPenalty` rollup (was inadvertently included)
+
+### Updated Files
+- /app/backend/server.py (now 1626 lines)
+- /app/frontend/src/pages/AdminDashboard.jsx
+- /app/frontend/src/components/AdminSavingsTab.jsx
+- /app/frontend/src/components/PersonalLoanModal.jsx (NEW)
+- /app/frontend/src/components/PersonalLoansTab.jsx (NEW)

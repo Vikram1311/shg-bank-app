@@ -1384,13 +1384,13 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
             else:
                 cursor = datetime(cursor.year, cursor.month + 1, 1)
 
-        # Check unpaid EMIs past due date (only after penaltyStartDate)
+        # Check unpaid EMIs past due date (only after penaltyStartDate; skip personal loans)
         for ml in member_loans:
             if ml["status"] not in ["active"]:
                 continue
             if ml.get("isPersonal"):
-                # personal loan penalties not aggregated for group share, but still counted as personal due
-                pass
+                # Personal loans not part of group penalty pool
+                continue
             for emi in ml.get("emiHistory", []):
                 if emi["status"] == "pending":
                     due_str = emi["dueDate"][:10]
