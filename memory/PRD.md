@@ -202,3 +202,21 @@
 - server.py = 1370 lines (refactor to routers recommended)
 - Token still raw memberId UUID (security todo)
 - Plaintext passwords (security todo - implement bcrypt)
+
+---
+## Iteration 4.1 (Feb 19, 2026) - EMI Edit PenaltyRecord Sync
+
+### Bug Fix:
+- `PUT /api/loans/{loan_id}/emi/{emi_id}` now properly syncs PenaltyRecord:
+  - Setting non-zero `penalty` → creates new PenaltyRecord OR updates existing (idempotent)
+  - Setting `penalty=0` → deletes existing PenaltyRecord
+  - Updates `daysLate` (auto-calculated from dueDate) and `date` (from paidDate)
+  - Penalty totals/shares now correctly reflect manual EMI penalty edits
+
+### Additional Improvements:
+- `edit_emi` no longer flips `pending`/`rejected`/`recalled` loans to `active` (preserves original status until approved)
+
+### Verified Manually
+- Set penalty 500 → PenaltyRecord created (count +1)
+- Update to 300 → same record updated (count unchanged, amount=300)
+- Clear to 0 → record deleted (count back to baseline)

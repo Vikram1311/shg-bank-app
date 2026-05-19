@@ -713,13 +713,48 @@ async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member 
             break
     if not target_emi:
         raise HTTPException(status_code=404, detail="EMI not found")
+
+    old_penalty = target_emi.get("penalty", 0)
     update_fields = {k: v for k, v in input.model_dump().items() if v is not None}
     target_emi.update(update_fields)
+
+    # ---- Sync PenaltyRecord with edited penalty ----
+    new_penalty = target_emi.get("penalty", 0) or 0
+    if new_penalty != old_penalty:
+        existing_pen = await db.penalties.find_one({"referenceId": emi_id, "type": "emi"}, {"_id": 0})
+        if new_penalty > 0:
+            # Compute days_late from due date
+            due_str = target_emi.get("dueDate", "")
+            try:
+                days_late = calculate_penalty_days(due_str)
+            except Exception:
+                days_late = 0
+            penalty_date = target_emi.get("paidDate") or datetime.now().date().isoformat()
+            if existing_pen:
+                await db.penalties.update_one(
+                    {"referenceId": emi_id, "type": "emi"},
+                    {"$set": {"amount": new_penalty, "date": penalty_date, "daysLate": days_late}},
+                )
+            else:
+                p = PenaltyRecord(
+                    memberId=loan["memberId"], type="emi", referenceId=emi_id,
+                    amount=new_penalty, date=penalty_date, daysLate=days_late,
+                )
+                await db.penalties.insert_one(p.model_dump())
+        else:
+            # Penalty cleared → remove record
+            if existing_pen:
+                await db.penalties.delete_many({"referenceId": emi_id, "type": "emi"})
+
     # Recompute remaining amount
     paid_total = sum(e["amount"] for e in emi_history if e["status"] == "paid")
     new_remaining = max(0, loan["totalPayable"] - paid_total)
     all_paid = all(e["status"] == "paid" for e in emi_history)
-    new_status = "completed" if all_paid else "active"
+    # Preserve original status for pending/rejected/recalled loans
+    if loan["status"] in ("pending", "rejected", "recalled"):
+        new_status = loan["status"]
+    else:
+        new_status = "completed" if all_paid else "active"
     await db.loans.update_one({"id": loan_id}, {"$set": {
         "emiHistory": emi_history,
         "remainingAmount": new_remaining,
