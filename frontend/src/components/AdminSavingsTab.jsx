@@ -44,13 +44,16 @@ export default function AdminSavingsTab({ members }) {
     } finally { setDistributing(false); }
   };
 
-  const remove = async (id) => {
-    if (!window.confirm(t('confirm') + '?')) return;
+  const remove = async (tx) => {
+    const msg = `क्या आप ${tx.memberName} का ${tx.type === 'deposit' ? 'जमा' : 'निकासी'} ₹${tx.amount} (${tx.description || '-'}) सच में delete करना चाहते हैं?\n\nयह action वापस नहीं होगा।`;
+    if (!window.confirm(msg)) return;
     try {
-      await api.delete(`/savings/${id}`);
-      toast.success(t('success'));
+      await api.delete(`/savings/${tx.id}`);
+      toast.success(`${tx.memberName} की entry delete हो गयी ✓`);
       load();
-    } catch { toast.error(t('error')); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('error'));
+    }
   };
 
   const approve = async (id) => {
@@ -196,7 +199,7 @@ export default function AdminSavingsTab({ members }) {
                     <button onClick={() => setEditingTxn(tx)} className="p-1.5 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100" data-testid={`edit-savings-${tx.id}`}>
                       <Edit className="w-4 h-4" />
                     </button>
-                    <button onClick={() => remove(tx.id)} className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100" data-testid={`delete-savings-${tx.id}`}>
+                    <button onClick={() => remove(tx)} className="p-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" data-testid={`delete-savings-${tx.id}`} title="entry delete करें">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </td>
@@ -269,6 +272,7 @@ function EditSavingsModal({ txn, onClose, onSuccess }) {
   const [description, setDescription] = useState(txn.description || '');
   const [type, setType] = useState(txn.type);
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const save = async () => {
     setLoading(true);
@@ -282,6 +286,20 @@ function EditSavingsModal({ txn, onClose, onSuccess }) {
     } finally { setLoading(false); }
   };
 
+  const deleteEntry = async () => {
+    const msg = `क्या आप ${txn.memberName} का ${txn.type === 'deposit' ? 'जमा' : 'निकासी'} ₹${txn.amount} (${txn.description || '-'}) सच में delete करना चाहते हैं?\n\nयह action वापस नहीं होगा।`;
+    if (!window.confirm(msg)) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/savings/${txn.id}`);
+      toast.success(`${txn.memberName} की entry delete हो गयी ✓`);
+      onSuccess();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('error'));
+    } finally { setDeleting(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div className="card-3d max-w-md w-full p-6" onClick={(e) => e.stopPropagation()} data-testid="edit-savings-modal">
@@ -290,6 +308,9 @@ function EditSavingsModal({ txn, onClose, onSuccess }) {
           <button onClick={onClose}><X className="w-5 h-5" /></button>
         </div>
         <div className="space-y-3">
+          <div className="bg-muted/40 rounded-xl p-2 text-xs font-bold">
+            <span className="text-muted-foreground">सदस्य:</span> {txn.memberName}
+          </div>
           <div>
             <label className="text-xs font-bold">Type</label>
             <select className="input-3d" value={type} onChange={(e) => setType(e.target.value)} data-testid="edit-savings-type">
@@ -309,7 +330,15 @@ function EditSavingsModal({ txn, onClose, onSuccess }) {
             <label className="text-xs font-bold">Description</label>
             <input type="text" className="input-3d" value={description} onChange={(e) => setDescription(e.target.value)} data-testid="edit-savings-desc" />
           </div>
-          <button onClick={save} disabled={loading} className="btn-3d-primary w-full" data-testid="edit-savings-save-btn">{loading ? t('loading') : t('save')}</button>
+          <div className="flex gap-2 pt-2">
+            <button onClick={save} disabled={loading || deleting} className="btn-3d-primary flex-1" data-testid="edit-savings-save-btn">
+              {loading ? t('loading') : t('save')}
+            </button>
+            <button onClick={deleteEntry} disabled={loading || deleting} className="px-4 py-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 border-2 border-red-200 font-bold flex items-center gap-2" data-testid="edit-savings-delete-btn">
+              <Trash2 className="w-4 h-4" />
+              {deleting ? '...' : 'Delete'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
