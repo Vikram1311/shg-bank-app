@@ -181,7 +181,29 @@ export default function MemberDetailModal({ memberId, onClose, onChange }) {
         {/* Tab content */}
         <div className="p-6">
           {tab === 'summary' && (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-4">
+              {/* Contribution Breakdown Banner — only if there is a deduction */}
+              {(stats.ownPenaltyPaid > 0 || stats.pendingPenalty > 0) && (
+                <div className="card-3d p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200" data-testid="contribution-breakdown">
+                  <h4 className="font-heading font-black text-sm mb-2 flex items-center gap-2 text-amber-900">
+                    💡 कुल योगदान का हिसाब
+                  </h4>
+                  <div className="text-sm font-bold space-y-1">
+                    <div className="flex justify-between"><span>जमा किया हुआ (Gross):</span><span className="text-emerald-700">{fc(stats.grossContribution)}</span></div>
+                    {stats.ownPenaltyPaid > 0 && (
+                      <div className="flex justify-between"><span>− अपना जुर्माना कटा:</span><span className="text-red-600">−{fc(stats.ownPenaltyPaid)}</span></div>
+                    )}
+                    {stats.pendingPenalty > 0 && (
+                      <div className="flex justify-between"><span>− चल रहा जुर्माना (auto-deduct):</span><span className="text-red-600">−{fc(stats.pendingPenalty)}</span></div>
+                    )}
+                    <div className="flex justify-between border-t-2 border-amber-300 pt-1 mt-1 text-base">
+                      <span>= कुल योगदान (Net):</span>
+                      <span className="text-primary font-heading font-black">{fc(stats.totalContribution)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <SummaryCard label="कुल योगदान" value={fc(stats.totalContribution)} color="from-pink-500 to-rose-500" />
               <SummaryCard label="जुर्माना हिस्सा" value={fc(stats.penaltyShare)} color="from-amber-500 to-orange-500" />
               <SummaryCard label="ब्याज हिस्सा" value={fc(stats.interestShare)} color="from-violet-500 to-indigo-500" />
@@ -208,6 +230,7 @@ export default function MemberDetailModal({ memberId, onClose, onChange }) {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           )}
 

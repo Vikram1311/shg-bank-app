@@ -108,6 +108,28 @@ export default function MemberDashboard() {
               <StatCard icon={PiggyBank} label={t('savingsBalance')} value={fc(stats.savingsBalance)} accent="success" testId="stat-savings" />
             </div>
 
+            {/* Contribution breakdown — visible only when penalty deducted */}
+            {(stats.ownPenaltyPaid > 0 || stats.pendingPenalty > 0) && (
+              <div className="card-3d p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200" data-testid="contribution-breakdown-card">
+                <h4 className="font-heading font-black text-sm mb-2 flex items-center gap-2 text-amber-900">
+                  💡 कुल योगदान का हिसाब
+                </h4>
+                <div className="text-sm font-bold space-y-1">
+                  <div className="flex justify-between"><span>जमा किया हुआ (Gross):</span><span className="text-emerald-700">{fc(stats.grossContribution)}</span></div>
+                  {stats.ownPenaltyPaid > 0 && (
+                    <div className="flex justify-between"><span>− आपका जुर्माना कटा:</span><span className="text-red-600">−{fc(stats.ownPenaltyPaid)}</span></div>
+                  )}
+                  {stats.pendingPenalty > 0 && (
+                    <div className="flex justify-between"><span>− चल रहा जुर्माना (रोज़ बढ़ रहा है):</span><span className="text-red-600">−{fc(stats.pendingPenalty)}</span></div>
+                  )}
+                  <div className="flex justify-between border-t-2 border-amber-300 pt-1 mt-1 text-base">
+                    <span>= कुल योगदान (Net):</span>
+                    <span className="text-primary font-heading font-black">{fc(stats.totalContribution)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Pending Penalty warning */}
             {stats.pendingPenalty > 0 && (
               <div className="card-3d p-5 bg-gradient-to-r from-red-50 to-amber-50 border-2 border-red-300 animate-pulse" data-testid="pending-penalty-card">
