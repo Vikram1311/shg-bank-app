@@ -1323,14 +1323,12 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     total_penalty = sum(p["amount"] for p in rel_penalties)
     penalty_share = round((share_contrib / total_all_contribs) * total_penalty, 2) if total_all_contribs else 0
 
-    # PRD #10: Penalty auto-deducted from member's own contribution amount.
-    # Member's own penalty records reduce their effective contribution (penalty pool
-    # is shared with the group; the member's net contribution column reflects deduction).
+    # PRD #10: Member's own penalty records reduce their effective contribution.
+    # (Live `pending_penalty` is also deducted below, after it is computed.)
     own_penalty_paid = sum(
         p["amount"] for p in penalties
         if p["memberId"] == member_id and p["date"][:10] >= joining[:10]
     )
-    total_contribution = max(0, gross_contribution - own_penalty_paid)
 
     # Loans interest (loans opened after joining, excluding personal loans)
     loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
@@ -1351,9 +1349,6 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     now = datetime.now()
     current_month_key = f"{now.year}-{now.month:02d}"
     paid_months = {c["month"] for c in member_contribs}
-
-    total_earnings = penalty_share + interest_share
-    grand_total = total_contribution + total_earnings
 
     # ====== Pending Penalty (currently accruing) ======
     settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
@@ -1428,6 +1423,14 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
                         })
 
     pending_penalty = round(pending_penalty, 2)
+
+    # PRD #10 + user request: Auto-deduct BOTH already-recorded penalties AND
+    # live accruing pending_penalty from this month's 12th onwards.
+    # This makes the member's displayed contribution shrink daily while they are late,
+    # without waiting for admin to manually record the payment.
+    total_contribution = max(0, gross_contribution - own_penalty_paid - pending_penalty)
+    total_earnings = penalty_share + interest_share
+    grand_total = total_contribution + total_earnings
 
     # Auto-create notification once per day if pending_penalty > 0
     if pending_penalty > 0 and not is_admin:
