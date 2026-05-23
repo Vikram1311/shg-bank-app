@@ -224,13 +224,16 @@ function LoansTab({ loans, members, onChange }) {
   const [emiToPay, setEmiToPay] = useState(null); // { loan, emi }
   const filtered = filter === 'all' ? loans : loans.filter((l) => l.status === filter);
 
-  const deleteLoan = async (loanId) => {
-    if (!window.confirm(t('confirm') + '?')) return;
+  const deleteLoan = async (loan) => {
+    const msg = `क्या आप ${loan.memberName} का ₹${loan.amount} ऋण (${loan.months} माह) सच में delete करना चाहते हैं?\n\nयह action वापस नहीं होगा।`;
+    if (!window.confirm(msg)) return;
     try {
-      await api.delete(`/loans/${loanId}`);
-      toast.success(t('success'));
+      await api.delete(`/loans/${loan.id}`);
+      toast.success(`${loan.memberName} का ऋण delete हो गया ✓`);
       onChange();
-    } catch { toast.error(t('error')); }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || t('error'));
+    }
   };
 
   return (
@@ -263,7 +266,7 @@ function LoansTab({ loans, members, onChange }) {
                   {l.guarantorName && <span className="pill bg-amber-100 text-amber-800">गारंटर: {l.guarantorName}</span>}
                 </div>
               </div>
-              <button onClick={() => deleteLoan(l.id)} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100" data-testid={`delete-loan-${l.id}`}>
+              <button onClick={() => deleteLoan(l)} className="p-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 border-2 border-red-200" data-testid={`delete-loan-${l.id}`} title={`${l.memberName} का ऋण delete करें`}>
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

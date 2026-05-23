@@ -810,8 +810,16 @@ async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member 
 async def delete_loan(loan_id: str, user: Member = Depends(get_current_user)):
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
+    # Get loan first for cascade cleanup
+    loan = await db.loans.find_one({"id": loan_id}, {"_id": 0})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    # Cascade: remove any EMI-late penalties tied to this loan's EMIs
+    emi_ids = [e["id"] for e in loan.get("emiHistory", []) if "id" in e]
+    if emi_ids:
+        await db.penalties.delete_many({"type": "emi", "referenceId": {"$in": emi_ids}})
     await db.loans.delete_one({"id": loan_id})
-    return {"success": True}
+    return {"success": True, "memberName": loan.get("memberName"), "amount": loan.get("amount")}
 
 
 @api_router.post("/personal-loans", response_model=Loan)
