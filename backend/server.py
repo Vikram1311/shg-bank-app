@@ -1623,6 +1623,36 @@ async def clear_transactions(user: Member = Depends(get_current_user)):
     }
 
 
+@api_router.post("/admin/cleanup-orphan-penalties")
+async def cleanup_orphan_penalties(user: Member = Depends(get_current_user)):
+    """Admin: remove EMI/contribution penalty records whose source no longer exists."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    # Collect valid emi ids and contribution ids
+    loans = await db.loans.find({}, {"_id": 0, "emiHistory": 1}).to_list(5000)
+    valid_emi_ids = set()
+    for l in loans:
+        for e in l.get("emiHistory", []):
+            if e.get("id"):
+                valid_emi_ids.add(e["id"])
+    contribs = await db.contributions.find({}, {"_id": 0, "id": 1}).to_list(5000)
+    valid_contrib_ids = {c["id"] for c in contribs}
+
+    penalties = await db.penalties.find({}, {"_id": 0}).to_list(5000)
+    orphan_ids = []
+    details = []
+    for p in penalties:
+        if p.get("type") == "emi" and p.get("referenceId") and p["referenceId"] not in valid_emi_ids:
+            orphan_ids.append(p["id"])
+            details.append({"memberId": p.get("memberId"), "amount": p.get("amount"), "type": "emi"})
+        elif p.get("type") == "contribution" and p.get("referenceId") and p["referenceId"] not in valid_contrib_ids:
+            orphan_ids.append(p["id"])
+            details.append({"memberId": p.get("memberId"), "amount": p.get("amount"), "type": "contribution"})
+    if orphan_ids:
+        await db.penalties.delete_many({"id": {"$in": orphan_ids}})
+    return {"deleted": len(orphan_ids), "details": details}
+
+
 @api_router.get("/")
 async def root():
     return {"message": "SHG BANK API"}

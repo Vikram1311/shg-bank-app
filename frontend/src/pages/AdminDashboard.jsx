@@ -604,6 +604,18 @@ function SettingsTab({ settings, onUpdate }) {
     finally { setClearing(false); }
   };
 
+  const cleanupOrphans = async () => {
+    if (!window.confirm('Orphan penalty records (जिनकी related loan/contribution delete हो चुकी है) को साफ करें?')) return;
+    try {
+      const r = await api.post('/admin/cleanup-orphan-penalties');
+      if (r.data.deleted === 0) {
+        toast.success('कोई orphan penalty नहीं मिली ✓');
+      } else {
+        toast.success(`${r.data.deleted} orphan penalty record(s) delete हुई ✓`);
+      }
+    } catch { toast.error(t('error')); }
+  };
+
   if (!settings) return <div>{t('loading')}</div>;
 
   return (
@@ -621,6 +633,17 @@ function SettingsTab({ settings, onUpdate }) {
           <Field label="Savings Interest (% annual)" type="number" value={form.savingsInterestRate} onChange={(v) => setForm({ ...form, savingsInterestRate: Number(v) })} testId="settings-savings-rate" />
           <button onClick={save} disabled={loading} className="btn-3d-primary" data-testid="settings-save-btn">{loading ? t('loading') : t('saveSettings')}</button>
         </div>
+      </div>
+
+      {/* Maintenance tools */}
+      <div className="card-3d p-6 max-w-2xl border-2 border-amber-300 bg-amber-50/30">
+        <h3 className="font-heading font-black text-xl text-amber-800 flex items-center gap-2">
+          🛠️ Maintenance
+        </h3>
+        <p className="text-sm text-amber-900 font-bold mt-2">Orphan जुर्माना records (जिनकी loan/contribution अब delete हो चुकी है) को auto-clean करें।</p>
+        <button onClick={cleanupOrphans} className="btn-3d-accent mt-3 flex items-center gap-2" data-testid="cleanup-orphans-btn">
+          🧹 Orphan Penalties Clean करें
+        </button>
       </div>
 
       {/* Danger zone - Clear data */}
