@@ -1,0 +1,11 @@
+[
+  {
+    "id": "b0a7b530-abd9-4eed-a01e-87662f6d799f",
+    "memberId": "c5eb539c-5842-4270-afa6-d9a69480bcd6",
+    "type": "emi",
+    "referenceId": "06847522-b700-4d92-adf6-5e85abb8cd50",
+    "amount": 80.0,
+    "date": "2026-05-19",
+    "daysLate": 8
+  }
+]

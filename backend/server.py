@@ -1703,6 +1703,22 @@ async def clear_transactions(user: Member = Depends(get_current_user)):
     }
 
 
+@api_router.get("/admin/backup")
+async def admin_backup_data(user: Member = Depends(get_current_user)):
+    """Admin: download a JSON dump of all data (members, loans, contributions, savings, penalties, notifications, settings)."""
+    if not user.isAdmin:
+        raise HTTPException(status_code=403, detail="Admin only")
+    data = {}
+    for col_name in ["members", "loans", "contributions", "savings", "penalties", "notifications", "settings"]:
+        docs = await db[col_name].find({}, {"_id": 0}).to_list(50000)
+        data[col_name] = docs
+    data["_metadata"] = {
+        "timestamp": datetime.now().isoformat(),
+        "counts": {k: len(v) for k, v in data.items() if k != "_metadata"},
+    }
+    return data
+
+
 @api_router.post("/admin/cleanup-orphan-penalties")
 async def cleanup_orphan_penalties(user: Member = Depends(get_current_user)):
     """Admin: remove EMI/contribution penalty records whose source no longer exists."""

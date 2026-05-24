@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-05-24T17:13:01.731235",
+  "db_name": "test_database",
+  "counts": {
+    "members": 24,
+    "loans": 6,
+    "contributions": 190,
+    "savings": 50,
+    "penalties": 1,
+    "notifications": 260,
+    "settings": 1
+  },
+  "note": "REAL SHG Bank data backup"
+}

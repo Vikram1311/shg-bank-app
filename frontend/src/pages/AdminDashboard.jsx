@@ -639,6 +639,27 @@ function SettingsTab({ settings, onUpdate }) {
     } catch { toast.error(t('error')); }
   };
 
+  const downloadBackup = async () => {
+    try {
+      toast.info('Backup तैयार किया जा रहा है...');
+      const r = await api.get('/admin/backup');
+      const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      a.href = url;
+      a.download = `shg-bank-backup_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const counts = r.data._metadata?.counts || {};
+      toast.success(`✅ Backup download हो गया (${counts.members || 0} सदस्य, ${counts.loans || 0} loans)`);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Backup फेल हुआ');
+    }
+  };
+
   if (!settings) return <div>{t('loading')}</div>;
 
   return (
@@ -667,6 +688,18 @@ function SettingsTab({ settings, onUpdate }) {
         <button onClick={cleanupOrphans} className="btn-3d-accent mt-3 flex items-center gap-2" data-testid="cleanup-orphans-btn">
           🧹 Orphan Penalties Clean करें
         </button>
+      </div>
+
+      {/* Data Backup */}
+      <div className="card-3d p-6 max-w-2xl border-2 border-emerald-300 bg-emerald-50/30">
+        <h3 className="font-heading font-black text-xl text-emerald-800 flex items-center gap-2">
+          💾 Data Backup (Download)
+        </h3>
+        <p className="text-sm text-emerald-900 font-bold mt-2">पूरा data (सभी सदस्य, loans, contributions, savings, penalties) एक JSON file में download करें। इसे safely अपने computer/email/cloud पर save रखें।</p>
+        <button onClick={downloadBackup} className="mt-3 flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700" data-testid="download-backup-btn">
+          ⬇️ JSON Backup Download करें
+        </button>
+        <p className="text-[10px] text-emerald-700 mt-2">हफ्ते में एक बार backup download करना अच्छी practice है।</p>
       </div>
 
       {/* Danger zone - Clear data */}

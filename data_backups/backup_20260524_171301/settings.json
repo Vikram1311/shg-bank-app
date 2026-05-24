@@ -1,0 +1,16 @@
+[
+  {
+    "id": "settings",
+    "upiId": "9315341037@indie",
+    "groupName": "SHG BANK",
+    "monthlyContribution": 1000.0,
+    "maxLoanAmount": 15000.0,
+    "interestRate": 2.0,
+    "lateFeePerDay": 10.0,
+    "dueDate": 11,
+    "maxLoanAmountWithGuarantor": 30000.0,
+    "penaltyStartDate": "2026-06-10",
+    "savingsInterestRate": 7.25,
+    "lastInterestDistributedMonth": "2026-05"
+  }
+]
