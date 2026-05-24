@@ -570,7 +570,8 @@ async def apply_loan(input: LoanApplyInput, user: Member = Depends(get_current_u
 
     emi_history = []
     for i, b in enumerate(details["breakdown"]):
-        due_month = now.month + i
+        # First EMI is due NEXT month from loan opening (not the same month)
+        due_month = now.month + i + 1
         due_year = now.year + (due_month - 1) // 12
         due_month = ((due_month - 1) % 12) + 1
         emi = EMIRecord(
@@ -659,7 +660,8 @@ async def add_old_loan(input: OldLoanInput, user: Member = Depends(get_current_u
     opening = datetime.fromisoformat(input.openingDate) if "T" in input.openingDate else datetime.strptime(input.openingDate, "%Y-%m-%d")
     emi_history = []
     for i, b in enumerate(details["breakdown"]):
-        due_month = opening.month + i
+        # First EMI due NEXT month from opening date (not same month)
+        due_month = opening.month + i + 1
         due_year = opening.year + (due_month - 1) // 12
         due_month = ((due_month - 1) % 12) + 1
         emi = EMIRecord(
