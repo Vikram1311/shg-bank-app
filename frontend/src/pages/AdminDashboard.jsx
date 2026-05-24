@@ -179,6 +179,7 @@ export default function AdminDashboard() {
         )}
 
         {activeTab === 'loans' && <LoansTab loans={loans} members={members} onChange={loadAll} />}
+        {activeTab === 'personal' && <PersonalLoansTab members={members} onChange={loadAll} />}
         {activeTab === 'contributions' && <ContributionsTab members={members} onChange={loadAll} />}
         {activeTab === 'savings' && <AdminSavingsTab members={members} />}
         {activeTab === 'members' && <MembersTab members={members} onChange={loadAll} />}
