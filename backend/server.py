@@ -722,7 +722,8 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
     target_emi["paidDate"] = input.paidDate
     target_emi["penalty"] = penalty
     target_emi["amount"] = actual_amount  # Store actual paid amount
-    new_remaining = max(0, loan["remainingAmount"] - actual_amount)
+    # Remaining = sum of pending EMI amounts (truly what's left to pay)
+    new_remaining = round(sum(e["amount"] for e in emi_history if e["status"] == "pending"), 2)
     all_paid = all(e["status"] == "paid" for e in emi_history)
     new_status = "completed" if all_paid else loan["status"]
     await db.loans.update_one({"id": input.loanId}, {"$set": {
@@ -790,9 +791,8 @@ async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member 
             if existing_pen:
                 await db.penalties.delete_many({"referenceId": emi_id, "type": "emi"})
 
-    # Recompute remaining amount
-    paid_total = sum(e["amount"] for e in emi_history if e["status"] == "paid")
-    new_remaining = max(0, loan["totalPayable"] - paid_total)
+    # Recompute remaining amount = sum of pending EMIs
+    new_remaining = round(sum(e["amount"] for e in emi_history if e["status"] == "pending"), 2)
     all_paid = all(e["status"] == "paid" for e in emi_history)
     # Preserve original status for pending/rejected/recalled loans
     if loan["status"] in ("pending", "rejected", "recalled"):
