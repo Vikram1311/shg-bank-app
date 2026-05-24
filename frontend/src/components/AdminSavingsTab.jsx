@@ -21,11 +21,14 @@ export default function AdminSavingsTab({ members }) {
   useEffect(() => { load(); }, []);
 
   const distributeInterest = async () => {
-    if (!window.confirm('क्या आप सभी सदस्यों के अर्जित ब्याज को उनके बचत खाते में स्थानांतरित करना चाहते हैं?')) return;
     setDistributing(true);
     try {
       const r = await api.post('/savings/distribute-interest');
-      toast.success(`${r.data.totalMembers} सदस्यों को ब्याज जमा हुआ`);
+      if (r.data.totalMembers === 0) {
+        toast.success('सभी सदस्यों का ब्याज पहले से जमा है ✓ (auto-distribute हो रहा है)');
+      } else {
+        toast.success(`${r.data.totalMembers} सदस्यों को बचा हुआ ब्याज जमा हुआ ✓`);
+      }
       load();
     } catch (e) {
       toast.error(e.response?.data?.detail || t('error'));

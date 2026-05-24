@@ -22,6 +22,9 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 # ==================== Models ====================
 
@@ -742,6 +745,12 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
     if penalty > 0:
         msg += f" (₹{penalty} जुर्माना सहित)"
     await notify(loan["memberId"], msg, "emi_paid", input.loanId)
+    # Auto-distribute newly-collected interest to all members' savings (safe & idempotent)
+    if not loan.get("isPersonal"):
+        try:
+            await _auto_distribute_loan_interest()
+        except Exception as ex:
+            logger.warning(f"Auto-distribute after pay_emi failed: {ex}")
     return {"success": True, "penalty": penalty, "actualAmount": actual_amount}
 
 
@@ -806,6 +815,12 @@ async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member 
         "remainingAmount": new_remaining,
         "status": new_status,
     }})
+    # Auto-distribute interest delta (status change paid<->pending affects total collected interest)
+    if not loan.get("isPersonal"):
+        try:
+            await _auto_distribute_loan_interest()
+        except Exception as ex:
+            logger.warning(f"Auto-distribute after edit_emi failed: {ex}")
     return {"success": True, "emi": target_emi}
 
 
@@ -1134,36 +1149,48 @@ async def delete_savings(txn_id: str, user: Member = Depends(get_current_user)):
 
 @api_router.post("/savings/distribute-interest")
 async def distribute_interest_to_savings(user: Member = Depends(get_current_user)):
-    """Admin: distribute each member's earned interest share into their savings account."""
+    """Admin: distribute each member's earned (actually collected) interest into their savings account."""
     if not user.isAdmin:
         raise HTTPException(status_code=403, detail="Admin only")
-    # Calculate current interest share for each member, then transfer
+    result = await _auto_distribute_loan_interest()
+    if result["totalContribs"] <= 0:
+        raise HTTPException(status_code=400, detail="No contributions yet")
+    return {"transferred": result["transferred"], "totalMembers": len(result["transferred"])}
+
+
+async def _auto_distribute_loan_interest() -> dict:
+    """Core logic — credits ACTUALLY PAID loan interest to each member's savings.
+    Idempotent: re-running only credits the new delta.
+    Safe for admin: only collected interest is distributed (not theoretical future EMIs)."""
     all_members = await db.members.find({"isActive": True}, {"_id": 0}).to_list(100)
     non_admin = [m for m in all_members if not m.get("isAdmin")]
     all_member_ids = [m["id"] for m in non_admin]
     all_contribs = await db.contributions.find({"memberId": {"$in": all_member_ids}, "status": "paid"}, {"_id": 0}).to_list(5000)
     total_contribs = sum(c["amount"] for c in all_contribs)
     if total_contribs <= 0:
-        raise HTTPException(status_code=400, detail="No contributions yet")
-
-    # Already-distributed marker: check via description prefix
+        return {"transferred": [], "totalContribs": 0}
     today = datetime.now().date().isoformat()
     transferred = []
+    # Pre-fetch all group loans once
+    loans = await db.loans.find({"includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
     for m in all_members:
         joining = m["joiningDate"][:10]
-        member_contribs = [c for c in all_contribs if c["memberId"] == m["id"]]
-        member_total = sum(c["amount"] for c in member_contribs)
+        member_total = sum(c["amount"] for c in all_contribs if c["memberId"] == m["id"])
         if m.get("isAdmin"):
             share_contrib = total_contribs / len(non_admin) if non_admin else 0
         else:
             share_contrib = member_total
         if share_contrib <= 0:
             continue
-        loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True}, {"_id": 0}).to_list(2000)
+        # SAFETY: only use ACTUALLY PAID interest (from paid EMIs after joining)
         rel_loans = [l for l in loans if l["openingDate"][:10] >= joining]
-        total_interest = sum(l.get("totalInterest", 0) for l in rel_loans)
-        share = round((share_contrib / total_contribs) * total_interest, 2)
-        # Subtract already-distributed interest
+        actually_paid_interest = 0
+        for l in rel_loans:
+            for e in l.get("emiHistory", []):
+                if e.get("status") == "paid":
+                    actually_paid_interest += e.get("interestComponent", 0)
+        share = round((share_contrib / total_contribs) * actually_paid_interest, 2)
+        # Subtract already-distributed
         existing = await db.savings.find({"memberId": m["id"], "description": {"$regex": "^Interest auto-credit"}}, {"_id": 0}).to_list(500)
         already = sum(t["amount"] for t in existing if t["type"] == "deposit")
         to_credit = round(share - already, 2)
@@ -1171,11 +1198,12 @@ async def distribute_interest_to_savings(user: Member = Depends(get_current_user
             txn = SavingsTransaction(
                 memberId=m["id"], memberName=m["name"], type="deposit",
                 amount=to_credit, date=today, description="Interest auto-credit",
+                status="approved",
             )
             await db.savings.insert_one(txn.model_dump())
             transferred.append({"memberId": m["id"], "name": m["name"], "amount": to_credit})
-            await notify(m["id"], f"✨ ब्याज ₹{to_credit} आपके बचत खाते में जमा हुआ", "interest_credit", txn.id)
-    return {"transferred": transferred, "totalMembers": len(transferred)}
+            await notify(m["id"], f"✨ ब्याज ₹{to_credit} आपके बचत खाते में auto-जमा हुआ", "interest_credit", txn.id)
+    return {"transferred": transferred, "totalContribs": total_contribs}
 
 
 @api_router.post("/savings/distribute-savings-interest")
@@ -1342,9 +1370,14 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     )
 
     # Loans interest (loans opened after joining, excluding personal loans)
-    loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    # SAFETY: only ACTUALLY PAID interest counts (not theoretical full-loan interest)
+    loans = await db.loans.find({"includeInApp": True, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
     rel_loans = [l for l in loans if l["openingDate"][:10] >= joining[:10]]
-    total_interest = sum(l.get("totalInterest", 0) for l in rel_loans)
+    total_interest = 0
+    for ln in rel_loans:
+        for e in ln.get("emiHistory", []):
+            if e.get("status") == "paid":
+                total_interest += e.get("interestComponent", 0)
     interest_share = round((share_contrib / total_all_contribs) * total_interest, 2) if total_all_contribs else 0
 
     # Member loans
@@ -1670,9 +1703,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
