@@ -139,6 +139,7 @@ class Settings(BaseModel):
     dueDate: int = 11
     penaltyStartDate: str = "2026-06-10"  # Pending penalty calc only counts months on/after this
     savingsInterestRate: float = 7.25  # Annual % on savings balance
+    lastInterestDistributedMonth: Optional[str] = None  # YYYY-MM marker for monthly auto-credit on 11th
 
 
 class LoginInput(BaseModel):
@@ -354,6 +355,13 @@ async def notify(member_id: str, message: str, notif_type: str = "general", ref_
         referenceId=ref_id,
     )
     await db.notifications.insert_one(n.model_dump())
+
+
+async def notify_admins(message: str, notif_type: str = "admin_alert", ref_id: Optional[str] = None) -> None:
+    """Send a notification to every admin (so admin always knows about penalties/etc)."""
+    admins = await db.members.find({"isAdmin": True}, {"_id": 0, "id": 1}).to_list(10)
+    for a in admins:
+        await notify(a["id"], message, notif_type, ref_id)
 
 
 # ==================== Auth Helper ====================
@@ -740,6 +748,7 @@ async def pay_emi(input: EMIPayInput, user: Member = Depends(get_current_user)):
         p = PenaltyRecord(memberId=loan["memberId"], type="emi", referenceId=target_emi["id"],
                           amount=penalty, date=input.paidDate, daysLate=days_late)
         await db.penalties.insert_one(p.model_dump())
+        await notify_admins(f"⚠️ जुर्माना: {loan['memberName']} पर ₹{penalty} (EMI #{input.emiNumber} • {days_late} दिन late)", "penalty_applied", p.id)
     # Notify member
     msg = f"💰 आपका EMI #{input.emiNumber} ₹{actual_amount} जमा हुआ"
     if penalty > 0:
@@ -797,6 +806,7 @@ async def edit_emi(loan_id: str, emi_id: str, input: EMIEditInput, user: Member 
                     amount=new_penalty, date=penalty_date, daysLate=days_late,
                 )
                 await db.penalties.insert_one(p.model_dump())
+                await notify_admins(f"⚠️ जुर्माना: {loan['memberName']} पर ₹{new_penalty} (EMI edit • {days_late} दिन late)", "penalty_applied", p.id)
         else:
             # Penalty cleared → remove record
             if existing_pen:
@@ -937,6 +947,8 @@ async def add_contribution(input: ContributionInput, user: Member = Depends(get_
         p = PenaltyRecord(memberId=input.memberId, type="contribution", referenceId=contribution.id,
                           amount=penalty, date=input.paidDate, daysLate=days_late)
         await db.penalties.insert_one(p.model_dump())
+        mem = await db.members.find_one({"id": input.memberId}, {"_id": 0, "name": 1})
+        await notify_admins(f"⚠️ जुर्माना: {mem['name'] if mem else 'सदस्य'} पर ₹{penalty} (Contribution {input.month} • {days_late} दिन late)", "penalty_applied", p.id)
     # Notify
     msg = f"✅ आपका {input.month} का योगदान ₹{settings_doc['monthlyContribution']} जमा हुआ"
     if penalty > 0:
@@ -1147,6 +1159,33 @@ async def delete_savings(txn_id: str, user: Member = Depends(get_current_user)):
     return {"success": True}
 
 
+async def _maybe_run_monthly_interest_credit() -> bool:
+    """If today is on/after 11th and this month hasn't been auto-credited yet, run it.
+    Returns True if credit was performed (or attempted), False otherwise.
+    Safe to call from any read path — idempotent across the month."""
+    now = datetime.now()
+    if now.day < 11:
+        return False
+    month_key = f"{now.year}-{now.month:02d}"
+    settings_doc = await db.settings.find_one({"id": "settings"}, {"_id": 0})
+    if not settings_doc:
+        return False
+    if settings_doc.get("lastInterestDistributedMonth") == month_key:
+        return False  # already done this month
+    # Run the distribution
+    try:
+        await _auto_distribute_loan_interest()
+        await db.settings.update_one(
+            {"id": "settings"},
+            {"$set": {"lastInterestDistributedMonth": month_key}},
+        )
+        logger.info(f"Monthly interest auto-credit ran for {month_key}")
+        return True
+    except Exception as ex:
+        logger.warning(f"Monthly interest auto-credit failed for {month_key}: {ex}")
+        return False
+
+
 @api_router.post("/savings/distribute-interest")
 async def distribute_interest_to_savings(user: Member = Depends(get_current_user)):
     """Admin: distribute each member's earned (actually collected) interest into their savings account."""
@@ -1297,6 +1336,8 @@ async def update_settings(input: SettingsUpdate, user: Member = Depends(get_curr
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(user: Member = Depends(get_current_user)):
     """Returns admin-level aggregate stats."""
+    # Auto-credit monthly interest on/after 11th (idempotent)
+    await _maybe_run_monthly_interest_credit()
     contribs = await db.contributions.find({"status": "paid"}, {"_id": 0}).to_list(5000)
     loans = await db.loans.find({"status": {"$in": ["active", "completed"]}, "isPersonal": {"$ne": True}}, {"_id": 0}).to_list(2000)
     personal_loans = await db.loans.find({"isPersonal": True}, {"_id": 0}).to_list(500)
@@ -1336,6 +1377,9 @@ async def member_stats(member_id: str, user: Member = Depends(get_current_user))
     member = await db.members.find_one({"id": member_id}, {"_id": 0})
     if not member:
         raise HTTPException(status_code=404, detail="Not found")
+
+    # Auto-credit monthly interest on/after 11th (idempotent)
+    await _maybe_run_monthly_interest_credit()
 
     # Member's contribution total (gross, before own-penalty deduction)
     member_contribs = await db.contributions.find({"memberId": member_id, "status": "paid"}, {"_id": 0}).to_list(500)

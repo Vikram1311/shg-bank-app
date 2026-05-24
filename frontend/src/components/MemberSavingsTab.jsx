@@ -12,16 +12,19 @@ export default function MemberSavingsTab() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
+  const [savingsRate, setSavingsRate] = useState(7.25);
 
   const load = async () => {
     try {
-      const [tRes, bRes] = await Promise.all([
+      const [tRes, bRes, sRes] = await Promise.all([
         api.get('/savings', { params: { memberId: user.id } }),
         api.get(`/savings/balance/${user.id}`),
+        api.get('/settings'),
       ]);
       setTxns(tRes.data.sort((a, b) => b.date.localeCompare(a.date)));
       setBalance(bRes.data.balance);
       setPendingAmount(bRes.data.pendingAmount || 0);
+      setSavingsRate(sRes.data?.savingsInterestRate || 7.25);
     } catch (e) {
       console.error(e);
     }
@@ -76,6 +79,18 @@ export default function MemberSavingsTab() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Interest rate badge */}
+      <div className="card-3d p-4 bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-300 flex items-center gap-3" data-testid="savings-interest-badge">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white shadow-lg">
+          <TrendingUp className="w-6 h-6" />
+        </div>
+        <div className="flex-1">
+          <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">वार्षिक ब्याज दर</p>
+          <p className="font-heading font-black text-2xl text-amber-900">{savingsRate}% प्रति वर्ष</p>
+          <p className="text-xs text-amber-800 font-semibold mt-0.5">आपकी बचत पर हर साल {savingsRate}% ब्याज मिलेगा</p>
         </div>
       </div>
 
