@@ -183,6 +183,7 @@ class EMIPayInput(BaseModel):
 class EMIEditInput(BaseModel):
     amount: Optional[float] = None
     paidDate: Optional[str] = None
+    dueDate: Optional[str] = None
     penalty: Optional[float] = None
     status: Optional[Literal["pending", "paid"]] = None
 

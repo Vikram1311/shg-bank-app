@@ -7,6 +7,7 @@ import AdminSavingsTab from '../components/AdminSavingsTab';
 import OldLoanModal from '../components/OldLoanModal';
 import MemberDetailModal from '../components/MemberDetailModal';
 import EMIPayModal from '../components/EMIPayModal';
+import EMIEditModal from '../components/EMIEditModal';
 import QuickActionsCard from '../components/QuickActions';
 import PersonalLoansTab from '../components/PersonalLoansTab';
 import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight, Trash, Briefcase, Clock } from 'lucide-react';
@@ -222,6 +223,7 @@ function LoansTab({ loans, members, onChange }) {
   const [filter, setFilter] = useState('all');
   const [showOldLoan, setShowOldLoan] = useState(false);
   const [emiToPay, setEmiToPay] = useState(null); // { loan, emi }
+  const [emiToEdit, setEmiToEdit] = useState(null); // { loan, emi }
   const filtered = filter === 'all' ? loans : loans.filter((l) => l.status === filter);
 
   const deleteLoan = async (loan) => {
@@ -270,7 +272,7 @@ function LoansTab({ loans, members, onChange }) {
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-            {l.status === 'active' && (
+            {l.emiHistory && l.emiHistory.length > 0 && (
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead><tr><th className="text-left p-1">#</th><th className="text-left p-1">EMI</th><th className="text-left p-1">{t('dueDate')}</th><th className="text-left p-1">{t('status')}</th><th></th></tr></thead>
@@ -282,11 +284,16 @@ function LoansTab({ loans, members, onChange }) {
                         <td className="p-1">{fd(e.dueDate)}</td>
                         <td className="p-1"><span className={`pill text-[10px] ${e.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{t(e.status)}</span></td>
                         <td className="p-1">
-                          {e.status === 'pending' && (
-                            <button onClick={() => setEmiToPay({ loan: l, emi: e })} className="btn-3d-success text-[10px] py-1 px-2" data-testid={`pay-emi-${l.id}-${e.emiNumber}`}>
-                              {t('payEmi')}
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => setEmiToEdit({ loan: l, emi: e })} className="p-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200" data-testid={`edit-emi-${l.id}-${e.emiNumber}`} title="EMI edit करें">
+                              <Edit className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                            {e.status === 'pending' && l.status === 'active' && (
+                              <button onClick={() => setEmiToPay({ loan: l, emi: e })} className="btn-3d-success text-[10px] py-1 px-2" data-testid={`pay-emi-${l.id}-${e.emiNumber}`}>
+                                {t('payEmi')}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -299,6 +306,7 @@ function LoansTab({ loans, members, onChange }) {
       )}
       {showOldLoan && <OldLoanModal members={members} onClose={() => setShowOldLoan(false)} onSuccess={onChange} />}
       {emiToPay && <EMIPayModal loan={emiToPay.loan} emi={emiToPay.emi} onClose={() => setEmiToPay(null)} onSuccess={onChange} />}
+      {emiToEdit && <EMIEditModal loan={emiToEdit.loan} emi={emiToEdit.emi} onClose={() => setEmiToEdit(null)} onSuccess={onChange} />}
     </div>
   );
 }
