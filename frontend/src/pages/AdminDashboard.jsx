@@ -8,6 +8,7 @@ import OldLoanModal from '../components/OldLoanModal';
 import MemberDetailModal from '../components/MemberDetailModal';
 import EMIPayModal from '../components/EMIPayModal';
 import EMIEditModal from '../components/EMIEditModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import QuickActionsCard from '../components/QuickActions';
 import PersonalLoansTab from '../components/PersonalLoansTab';
 import { Wallet, TrendingUp, Coins, Users, AlertTriangle, Download, Plus, CheckCircle2, X, Edit, Trash2, KeyRound, Settings as SettingsIcon, History, PiggyBank, Sparkles, ShieldAlert, FileClock, ChevronRight, Trash, Briefcase, Clock } from 'lucide-react';
@@ -225,18 +226,24 @@ function LoansTab({ loans, members, onChange }) {
   const [showOldLoan, setShowOldLoan] = useState(false);
   const [emiToPay, setEmiToPay] = useState(null); // { loan, emi }
   const [emiToEdit, setEmiToEdit] = useState(null); // { loan, emi }
+  const [loanToDelete, setLoanToDelete] = useState(null);
   const filtered = filter === 'all' ? loans : loans.filter((l) => l.status === filter);
 
-  const deleteLoan = async (loan) => {
-    const msg = `क्या आप ${loan.memberName} का ₹${loan.amount} ऋण (${loan.months} माह) सच में delete करना चाहते हैं?\n\nयह action वापस नहीं होगा।`;
-    if (!window.confirm(msg)) return;
+  const doDeleteLoan = async () => {
+    if (!loanToDelete) return;
     try {
-      await api.delete(`/loans/${loan.id}`);
-      toast.success(`${loan.memberName} का ऋण delete हो गया ✓`);
+      await api.delete(`/loans/${loanToDelete.id}`);
+      toast.success(`${loanToDelete.memberName} का ऋण delete हो गया ✓`);
       onChange();
     } catch (e) {
       toast.error(e.response?.data?.detail || t('error'));
+    } finally {
+      setLoanToDelete(null);
     }
+  };
+
+  const deleteLoan = (loan) => {
+    setLoanToDelete(loan);
   };
 
   return (
@@ -308,6 +315,13 @@ function LoansTab({ loans, members, onChange }) {
       {showOldLoan && <OldLoanModal members={members} onClose={() => setShowOldLoan(false)} onSuccess={onChange} />}
       {emiToPay && <EMIPayModal loan={emiToPay.loan} emi={emiToPay.emi} onClose={() => setEmiToPay(null)} onSuccess={onChange} />}
       {emiToEdit && <EMIEditModal loan={emiToEdit.loan} emi={emiToEdit.emi} onClose={() => setEmiToEdit(null)} onSuccess={onChange} />}
+      <ConfirmDialog
+        open={!!loanToDelete}
+        title="ऋण delete करें?"
+        message={loanToDelete ? `क्या आप ${loanToDelete.memberName} का ₹${loanToDelete.amount} ऋण (${loanToDelete.months} माह) सच में delete करना चाहते हैं?\n\nयह action वापस नहीं होगा। सभी EMI और related penalty records भी हट जाएंगे।` : ''}
+        onConfirm={doDeleteLoan}
+        onCancel={() => setLoanToDelete(null)}
+      />
     </div>
   );
 }
