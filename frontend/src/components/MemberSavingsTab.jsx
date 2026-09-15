@@ -30,7 +30,7 @@ export default function MemberSavingsTab() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [load]);
 
   const deposit = async () => {
     if (!amount || Number(amount) <= 0) return;
